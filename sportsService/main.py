@@ -1,7 +1,6 @@
 from fastapi import FastAPI
+from routers.pruebas import router as pruebas_router
 
-app = FastAPI()
+app = FastAPI(title="BasketCoach - Sports Service")
 
-@app.get("/prueba")
-def prueba():
-    return {"status": "ok", "service": "sports-service"}
+app.include_router(pruebas_router)

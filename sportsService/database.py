@@ -3,6 +3,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, URL
+from sqlalchemy.orm import Session
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -16,3 +17,7 @@ DATABASE_URL = URL.create(
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
+def get_db():
+    with Session(engine) as db:
+        yield db

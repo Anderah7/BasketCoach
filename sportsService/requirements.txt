@@ -2,5 +2,8 @@ fastapi
 uvicorn
 sqlalchemy
 psycopg
+psycopg[binary]
 python-dotenv
 alembic
+pydantic[email]
+PyJWT

@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from pwdlib import PasswordHash
 
 from database import get_db
 from models import User, UserRole, PlayerProfile
@@ -11,8 +10,6 @@ from security import password_hash, create_access_token, get_current_user
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
-
-password_hash = PasswordHash.recommended()
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(data: UserCreate, db: Session = Depends(get_db)):
@@ -47,6 +44,7 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(data: UserLogin, db: Session = Depends(get_db)):
+    """Copia `access_token` en Authorize de Swagger para usar las rutas protegidas."""
     email = str(data.email).strip().lower()
     user = db.scalar(select(User).where(User.email == email))
 

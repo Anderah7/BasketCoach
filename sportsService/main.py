@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from routers.pruebas import router as pruebas_router
 from routers.users import router as users_router
 from routers.players import router as players_router
+from routers.teams import router as teams_router
 
 app = FastAPI(
     title="BasketCoach - Sports Service",
@@ -11,3 +12,4 @@ app = FastAPI(
 app.include_router(pruebas_router)
 app.include_router(users_router)
 app.include_router(players_router)
+app.include_router(teams_router)

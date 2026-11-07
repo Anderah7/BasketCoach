@@ -150,6 +150,15 @@ class Training(Base):
         back_populates="training"
     )
 
+class ExerciseCategory(str, PythonEnum):
+    SHOOTING = "Shooting"
+    DEFENSE = "Defense"
+    PHYSICAL = "Physical"
+    BALL_HANDLING = "Ball handling"
+    PASSING = "Passing"
+    REBOUNDING = "Rebounding"
+    TACTICS = "Tactics"
+
 class Exercise(Base):
     __tablename__ = "exercises"
 
@@ -163,7 +172,15 @@ class Exercise(Base):
         Text, nullable=False
     )
 
-    category: Mapped[str | None] = mapped_column(String(60))
+    category: Mapped[ExerciseCategory | None] = mapped_column(
+        Enum(
+            ExerciseCategory,
+            name="exercise_category",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            validate_strings=True,
+        ),
+        nullable=True,
+    )
     difficulty: Mapped[str | None] = mapped_column(String(30))
     equipment: Mapped[str | None] = mapped_column(Text)
 

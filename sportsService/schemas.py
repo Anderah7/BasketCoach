@@ -2,7 +2,7 @@ from datetime import datetime, date
 from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from models import UserRole, PlayerPosition
+from models import UserRole, PlayerPosition, ExerciseCategory
 
 class UserCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -101,3 +101,26 @@ class PlayerProfileCoachUpdate(BaseModel):
     jersey_number: int | None = Field(default=None, ge=0, le=99)
     strengths: str | None = None
     weaknesses: str | None = None
+
+
+class ExerciseCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = None
+    category: ExerciseCategory | None = None
+    difficulty: str | None = None
+    equipment: str | None = None
+
+
+class ExerciseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    category: ExerciseCategory | None
+    difficulty: str | None
+    equipment: str | None
+    created_by: int | None
+    is_public: bool

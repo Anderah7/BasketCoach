@@ -1,9 +1,8 @@
 """Operaciones compartidas de pertenencia de jugadores a equipos."""
 
-from fastapi import HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from models import (
     AssignmentStatus,
@@ -35,19 +34,16 @@ def detach_player(db: Session, profile: PlayerProfile, team_id: int) -> None:
             .where(
                 Training.team_id == team_id,
                 TrainingAssignment.player_id == profile.user_id,
-                TrainingAssignment.status != AssignmentStatus.COMPLETED,
             )
-            .options(selectinload(TrainingAssignment.exercise_progress))
+            .order_by(TrainingAssignment.id)
+            .with_for_update(of=TrainingAssignment)
         ).all()
-        if any(
-            assignment.status != AssignmentStatus.PENDING
-            or assignment.exercise_progress
-            for assignment in assignments
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="El jugador tiene entrenamientos en curso o con progreso registrado",
-            )
+        for assignment in assignments:
+            if assignment.status in (AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS):
+                assignment.status = AssignmentStatus.CANCELLED
+                assignment.completed_at = None
+            elif assignment.status == AssignmentStatus.CANCELLED:
+                assignment.completed_at = None
 
         lineup_entries = db.scalars(
             select(LineupPlayer)
@@ -68,9 +64,6 @@ def detach_player(db: Session, profile: PlayerProfile, team_id: int) -> None:
         ).all()
         for availability in future_availabilities:
             db.delete(availability)
-
-        for assignment in assignments:
-            db.delete(assignment)
 
         profile.team = None
         profile.jersey_number = None

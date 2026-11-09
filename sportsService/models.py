@@ -247,6 +247,7 @@ class AssignmentStatus(str, PythonEnum):
     PENDING = "PENDING"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
 
 class TrainingAssignment(Base):
     __tablename__ = "training_assignments"

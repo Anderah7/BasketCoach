@@ -5,6 +5,7 @@ from routers.players import router as players_router
 from routers.teams import router as teams_router
 from routers.exercises import router as exercises_router
 from routers.trainings import router as trainings_router
+from routers.ai import router as ai_router
 
 app = FastAPI(
     title="BasketCoach - Sports Service",
@@ -17,3 +18,4 @@ app.include_router(players_router)
 app.include_router(teams_router)
 app.include_router(exercises_router)
 app.include_router(trainings_router)
+app.include_router(ai_router)

@@ -8,3 +8,4 @@ alembic
 pydantic[email]
 PyJWT
 pwdlib[argon2]
+httpx>=0.28,<1

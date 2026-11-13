@@ -27,6 +27,17 @@ class UserResponse(BaseModel):
     role: UserRole
     is_active: bool
     created_at: datetime
+    avatar_media_id: int | None = None
+
+
+class MediaAssetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    content_type: str
+    media_type: str
+    size_bytes: int
+    created_at: datetime
 
 class PlayerProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -93,6 +104,7 @@ class TeamPlayerResponse(BaseModel):
     weight_kg: Decimal | None
     strengths: str | None
     weaknesses: str | None
+    avatar_media_id: int | None = None
 
 
 class PlayerProfileCoachUpdate(BaseModel):
@@ -124,6 +136,7 @@ class ExerciseResponse(BaseModel):
     equipment: str | None
     created_by: int | None
     is_public: bool
+    media_assets: list[MediaAssetResponse] = Field(default_factory=list)
 
 
 class TrainingExerciseInput(BaseModel):
@@ -187,6 +200,7 @@ class TrainingExerciseResponse(BaseModel):
 
 class TrainingDetailResponse(TrainingListResponse):
     exercises: list[TrainingExerciseResponse]
+    media_assets: list[MediaAssetResponse] = Field(default_factory=list)
 
 
 class TrainingAssignmentCreate(BaseModel):
@@ -246,6 +260,7 @@ class PlayerTrainingDetailResponse(BaseModel):
     assigned_at: datetime
     completed_at: datetime | None
     exercises: list[PlayerTrainingExerciseResponse]
+    media_assets: list[MediaAssetResponse] = Field(default_factory=list)
 
 
 class ExerciseProgressUpdate(BaseModel):

@@ -23,6 +23,7 @@ function fallbackError(status: number): string {
   if (status === 403) return 'You do not have permission to do this.'
   if (status === 404) return 'The requested item was not found.'
   if (status === 409) return 'This action conflicts with existing data.'
+  if (status === 413) return 'The selected file is too large.'
   if (status === 422) return 'Check the form fields and try again.'
   if (status === 503) return 'The service is unavailable or not configured.'
   if (status === 504) return 'The service took too long to respond.'
@@ -56,6 +57,7 @@ function englishDetail(detail: string, status: number): string {
   const forbiddenExercise = detail.match(/^No puedes usar el ejercicio (\d+)$/)
   if (forbiddenExercise) return `You cannot use exercise ${forbiddenExercise[1]}.`
   if (['Name cannot be empty', 'Email already registered', 'Invalid email'].includes(detail)) return detail
+  if (/^(Use a PNG|File exceeds the|Upload between|An item can have at most|Empty files are not allowed|Media not found|You cannot)/.test(detail)) return detail
   return fallbackError(status)
 }
 
@@ -75,7 +77,7 @@ function errorMessage(data: unknown, status: number): string {
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const headers = new Headers({ Accept: 'application/json' })
-  if (options.body !== undefined) headers.set('Content-Type', 'application/json')
+  if (options.body !== undefined && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (options.token) headers.set('Authorization', `Bearer ${options.token}`)
 
   let response: Response
@@ -83,7 +85,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     response = await fetch(`${API_BASE}${path}`, {
       method: options.method ?? 'GET',
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.body === undefined ? undefined : options.body instanceof FormData ? options.body : JSON.stringify(options.body),
       signal: options.signal,
     })
   } catch (error) {
@@ -103,4 +105,18 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   if (!response.ok) throw new ApiError(response.status, errorMessage(data, response.status))
   return data as T
+}
+
+export async function apiRequestBlob(path: string, options: ApiRequestOptions = {}): Promise<Blob> {
+  const headers = new Headers()
+  if (options.token) headers.set('Authorization', `Bearer ${options.token}`)
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, { headers, signal: options.signal })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(0, 'Could not connect to BasketCoach. Check that the API Gateway is running.')
+  }
+  if (!response.ok) throw new ApiError(response.status, fallbackError(response.status))
+  return response.blob()
 }

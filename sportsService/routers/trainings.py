@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
 from models import (
@@ -89,12 +89,13 @@ def _training_detail(training: Training, db: Session) -> TrainingDetailResponse:
     links = db.scalars(
         select(TrainingExercise)
         .where(TrainingExercise.training_id == training.id)
-        .options(joinedload(TrainingExercise.exercise))
+        .options(joinedload(TrainingExercise.exercise).selectinload(Exercise.media_assets))
         .order_by(TrainingExercise.exercise_order)
     ).all()
     return TrainingDetailResponse(
         **TrainingListResponse.model_validate(training).model_dump(),
         exercises=[TrainingExerciseResponse.model_validate(link) for link in links],
+        media_assets=training.media_assets,
     )
 
 
@@ -245,6 +246,7 @@ def delete_training(
     _assert_editable(training, db)
 
     try:
+        media_keys = [asset.storage_key for asset in training.media_assets]
         links = db.scalars(
             select(TrainingExercise).where(TrainingExercise.training_id == training.id)
         ).all()
@@ -256,6 +258,14 @@ def delete_training(
     except Exception:
         db.rollback()
         raise
+    from media_store import remove_file
+    for key in media_keys:
+        try:
+            remove_file(key)
+        except OSError:
+            # The database delete already committed; retain a log for file cleanup.
+            import logging
+            logging.getLogger(__name__).exception("Could not remove media file %s", key)
 
 
 @router.post(

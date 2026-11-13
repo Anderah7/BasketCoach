@@ -24,6 +24,15 @@ export interface TeamPlayer {
   weight_kg: string | number | null
   strengths: string | null
   weaknesses: string | null
+  avatar_media_id: number | null
+}
+
+export interface MediaAsset {
+  id: number
+  media_type: 'image' | 'video'
+  content_type: string
+  size_bytes: number
+  created_at: string
 }
 
 export interface PlayerProfile {
@@ -47,6 +56,7 @@ export interface Exercise {
   equipment: string | null
   created_by: number | null
   is_public: boolean
+  media_assets: MediaAsset[]
 }
 
 export interface TrainingListItem {
@@ -71,6 +81,7 @@ export interface TrainingExerciseLink {
 
 export interface TrainingDetail extends TrainingListItem {
   exercises: TrainingExerciseLink[]
+  media_assets: MediaAsset[]
 }
 
 export interface TrainingExerciseInput {
@@ -135,6 +146,7 @@ export interface PlayerTrainingDetail {
   assigned_at: string
   completed_at: string | null
   exercises: PlayerTrainingExercise[]
+  media_assets: MediaAsset[]
 }
 
 export interface NewExerciseProposal {

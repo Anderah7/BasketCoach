@@ -7,6 +7,7 @@ export interface AuthUser {
   role: UserRole
   is_active: boolean
   created_at: string
+  avatar_media_id: number | null
 }
 
 export interface LoginCredentials {

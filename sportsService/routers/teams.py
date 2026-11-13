@@ -69,6 +69,7 @@ def _player_response(profile: PlayerProfile) -> TeamPlayerResponse:
         weight_kg=profile.weight_kg,
         strengths=profile.strengths,
         weaknesses=profile.weaknesses,
+        avatar_media_id=profile.user.avatar_media_id,
     )
 
 
@@ -94,7 +95,7 @@ def get_team_players(
     profiles = db.scalars(
         select(PlayerProfile)
         .where(PlayerProfile.team_id == team.id)
-        .options(joinedload(PlayerProfile.user))
+        .options(joinedload(PlayerProfile.user).joinedload(User.avatar_media))
     ).all()
     return [_player_response(profile) for profile in profiles]
 
@@ -111,7 +112,7 @@ def update_team_player(
     profile = db.scalar(
         select(PlayerProfile)
         .where(PlayerProfile.user_id == player_id)
-        .options(joinedload(PlayerProfile.user))
+        .options(joinedload(PlayerProfile.user).joinedload(User.avatar_media))
         .with_for_update(of=PlayerProfile)
     )
     if profile is None:

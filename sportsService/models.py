@@ -6,7 +6,7 @@ from decimal import Decimal
 from enum import Enum as PythonEnum
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, Enum, ForeignKey,
+    Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey,
     Integer, Numeric, String, Text,
     UniqueConstraint, func
 )
@@ -40,6 +40,14 @@ class User(Base):
     created_trainings: Mapped[list[Training]] = relationship(back_populates="creator")
     created_exercises: Mapped[list[Exercise]] = relationship(back_populates="creator")
     created_lineups: Mapped[list[Lineup]] = relationship(back_populates="creator")
+    avatar_media: Mapped[MediaAsset | None] = relationship(
+        back_populates="avatar_user", uselist=False,
+        foreign_keys=lambda: [MediaAsset.avatar_user_id],
+    )
+
+    @property
+    def avatar_media_id(self) -> int | None:
+        return self.avatar_media.id if self.avatar_media else None
 
 class Team(Base):
     __tablename__ = "teams"
@@ -149,6 +157,9 @@ class Training(Base):
     assignments: Mapped[list[TrainingAssignment]] = relationship(
         back_populates="training"
     )
+    media_assets: Mapped[list[MediaAsset]] = relationship(
+        back_populates="training", cascade="all, delete-orphan", order_by="MediaAsset.id"
+    )
 
 class ExerciseCategory(str, PythonEnum):
     SHOOTING = "Shooting"
@@ -200,6 +211,46 @@ class Exercise(Base):
     training_exercises: Mapped[list[TrainingExercise]] = relationship(
         back_populates="exercise"
     )
+    media_assets: Mapped[list[MediaAsset]] = relationship(
+        back_populates="exercise", cascade="all, delete-orphan", order_by="MediaAsset.id"
+    )
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+    __table_args__ = (
+        CheckConstraint(
+            "(CASE WHEN avatar_user_id IS NOT NULL THEN 1 ELSE 0 END) + "
+            "(CASE WHEN exercise_id IS NOT NULL THEN 1 ELSE 0 END) + "
+            "(CASE WHEN training_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
+            name="ck_media_single_owner",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    storage_key: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    avatar_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), unique=True, nullable=True
+    )
+    exercise_id: Mapped[int | None] = mapped_column(
+        ForeignKey("exercises.id"), index=True, nullable=True
+    )
+    training_id: Mapped[int | None] = mapped_column(
+        ForeignKey("trainings.id"), index=True, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    avatar_user: Mapped[User | None] = relationship(
+        back_populates="avatar_media", foreign_keys=[avatar_user_id]
+    )
+    exercise: Mapped[Exercise | None] = relationship(back_populates="media_assets")
+    training: Mapped[Training | None] = relationship(back_populates="media_assets")
 
 class TrainingExercise(Base):
     __tablename__ = "training_exercises"

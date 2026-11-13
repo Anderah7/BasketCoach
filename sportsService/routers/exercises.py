@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from database import get_db
 from models import Exercise, User, UserRole
@@ -56,6 +56,7 @@ def get_exercises(
 ):
     exercises = db.scalars(
         select(Exercise)
+        .options(selectinload(Exercise.media_assets))
         .where(
             or_(
                 Exercise.is_public.is_(True),

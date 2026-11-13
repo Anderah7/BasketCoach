@@ -7,7 +7,7 @@ async function routes(fastify) {
     }));
 
     fastify.register(proxy, {
-        upstream: 'http://127.0.0.1:8001',
+        upstream: process.env.SPORTS_SERVICE_URL || 'http://127.0.0.1:8001',
         prefix: '/api/sports'
     });
 

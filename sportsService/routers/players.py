@@ -3,11 +3,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
 from models import (
     AssignmentStatus,
+    Exercise,
     ExerciseProgress,
     PlayerProfile,
     Team,
@@ -211,7 +212,7 @@ def get_my_training_detail(
     exercises = db.scalars(
         select(TrainingExercise)
         .where(TrainingExercise.training_id == training.id)
-        .options(joinedload(TrainingExercise.exercise))
+        .options(joinedload(TrainingExercise.exercise).selectinload(Exercise.media_assets))
         .order_by(TrainingExercise.exercise_order)
     ).all()
     progress_by_exercise = {
@@ -230,6 +231,7 @@ def get_my_training_detail(
         status=assignment.status,
         assigned_at=assignment.assigned_at,
         completed_at=assignment.completed_at,
+        media_assets=training.media_assets,
         exercises=[
             PlayerTrainingExerciseResponse(
                 training_exercise_id=link.id,

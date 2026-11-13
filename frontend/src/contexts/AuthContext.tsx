@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ApiError, apiRequest } from '../services/api'
+import { ApiError, apiRequest, apiRequestBlob } from '../services/api'
 import type { ApiRequestOptions } from '../services/api'
 import { authService } from '../services/auth'
 import type { AuthUser, LoginCredentials } from '../types/auth'
@@ -20,6 +20,8 @@ interface AuthContextValue {
   logout: () => void
   retrySession: () => void
   request: <T>(path: string, options?: Omit<ApiRequestOptions, 'token'>) => Promise<T>
+  requestBlob: (path: string, signal?: AbortSignal) => Promise<Blob>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -101,6 +103,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [session, logout])
 
+  const requestBlob = useCallback(async (path: string, signal?: AbortSignal): Promise<Blob> => {
+    if (!session) throw new ApiError(401, 'Log in to continue.')
+    try { return await apiRequestBlob(path, { token: session.token, signal }) }
+    catch (error) { if (error instanceof ApiError && error.status === 401) logout(); throw error }
+  }, [session, logout])
+
+  const refreshUser = useCallback(async () => {
+    if (!session) throw new ApiError(401, 'Log in to continue.')
+    const user = await authService.me(session.token)
+    setSession((current) => current?.token === session.token ? { ...current, user } : current)
+  }, [session])
+
   return (
     <AuthContext.Provider value={{
       user: session?.user ?? null,
@@ -110,6 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       retrySession,
       request,
+      requestBlob,
+      refreshUser,
     }}>
       {children}
     </AuthContext.Provider>

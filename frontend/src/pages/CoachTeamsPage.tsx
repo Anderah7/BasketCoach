@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { EmptyState, Notice, PageHeading } from '../components/WorkspaceUI'
+import { Avatar } from '../components/ProtectedMedia'
 import { useAuth } from '../contexts/AuthContext'
 import { errorText, positionLabel } from '../services/format'
 import type { Team, TeamPlayer } from '../types/sports'
@@ -97,7 +98,7 @@ export function CoachTeamsPage() {
       </div>
       <div className="wb-stack">
         <section className="wb-card"><div className="wb-card-heading"><div><h2>Roster</h2><p>Players currently on this team</p></div></div>
-          {players.length ? <div className="wb-table-wrap"><table className="wb-table"><thead><tr><th>Player</th><th>Position</th><th>Jersey</th><th>Actions</th></tr></thead><tbody>{players.map((player) => <tr key={player.user_id}><td><strong>{player.name}</strong></td><td>{positionLabel(player.position)}</td><td>{player.jersey_number ?? '—'}</td><td><div className="wb-inline-actions"><button className="wb-button" onClick={() => startEdit(player)} disabled={busy}>Edit</button><button className="wb-button wb-button-danger" onClick={() => void removePlayer(player)} disabled={busy}>Remove</button></div></td></tr>)}</tbody></table></div> : <EmptyState>The roster is empty. Players can join using the invitation code.</EmptyState>}
+          {players.length ? <div className="wb-table-wrap"><table className="wb-table"><thead><tr><th>Player</th><th>Position</th><th>Jersey</th><th>Actions</th></tr></thead><tbody>{players.map((player) => <tr key={player.user_id}><td><div className="roster-person"><Avatar id={player.avatar_media_id} name={player.name} className="roster-avatar" /><strong>{player.name}</strong></div></td><td>{positionLabel(player.position)}</td><td>{player.jersey_number ?? '—'}</td><td><div className="wb-inline-actions"><button className="wb-button" onClick={() => startEdit(player)} disabled={busy}>Edit</button><button className="wb-button wb-button-danger" onClick={() => void removePlayer(player)} disabled={busy}>Remove</button></div></td></tr>)}</tbody></table></div> : <EmptyState>The roster is empty. Players can join using the invitation code.</EmptyState>}
         </section>
         {editing && <section className="wb-card"><div className="wb-card-heading"><h2>Edit {editing.name}</h2><button className="wb-button" onClick={() => setEditing(null)}>Close</button></div><form className="wb-form" onSubmit={savePlayer}><label className="wb-field">Jersey number<input type="number" min="0" max="99" value={jersey} onChange={(event) => setJersey(event.target.value)} placeholder="No jersey number" /></label><label className="wb-field">Strengths<textarea value={strengths} onChange={(event) => setStrengths(event.target.value)} /></label><label className="wb-field">Weaknesses<textarea value={weaknesses} onChange={(event) => setWeaknesses(event.target.value)} /></label><div className="wb-form-actions"><button className="wb-button wb-button-primary" disabled={busy}>Save changes</button></div></form></section>}
       </div>

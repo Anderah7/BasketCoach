@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { DetailModal } from '../components/DetailModal'
+import { MediaGallery } from '../components/ProtectedMedia'
+import { MediaUploader } from '../components/MediaUploader'
 import { EmptyState, Notice, PageHeading, StatusPill } from '../components/WorkspaceUI'
 import { useAuth } from '../contexts/AuthContext'
 import { categoryLabel, errorText, formatDateTime, toLocalDateTime } from '../services/format'
@@ -34,6 +36,7 @@ export function CoachTrainingsPage() {
   const [selectedPlayers, setSelectedPlayers] = useState<number[]>([])
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
   const [draft, setDraft] = useState<Draft>(freshDraft)
+  const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -97,9 +100,10 @@ export function CoachTrainingsPage() {
     setSelectedTraining(id); setDetailOpen(true); setEditorMode(null)
   }
 
-  function startCreate() { setDraft(freshDraft()); setEditorMode('create'); setDetailOpen(false); setError(null); setSuccess(null) }
+  function startCreate() { setDraft(freshDraft()); setMediaFiles([]); setEditorMode('create'); setDetailOpen(false); setError(null); setSuccess(null) }
   function startEdit() {
     if (!detail || detail.creation_mode !== 'MANUAL' || assignments.length) return
+    setMediaFiles([])
     setDraft({
       title: detail.title, description: detail.description ?? '', date: toLocalDateTime(detail.date), duration: detail.duration,
       exercises: detail.exercises.map((link) => ({ exercise_id: link.exercise.id, duration: link.duration, sets: link.sets, repetitions: link.repetitions })),
@@ -109,6 +113,7 @@ export function CoachTrainingsPage() {
 
   async function saveTraining(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const form = event.currentTarget
     if (selectedTeam === null || !editorMode) return
     if (!draft.title.trim() || !draft.date || !draft.exercises.length) { setError('Enter a title, date and at least one exercise.'); return }
     if (draft.duration <= 0 || draft.exercises.some((item) => item.exercise_id <= 0 || (item.duration !== null && item.duration <= 0) || (item.sets !== null && item.sets <= 0) || (item.repetitions !== null && item.repetitions <= 0))) {
@@ -120,8 +125,16 @@ export function CoachTrainingsPage() {
       const saved = editorMode === 'create'
         ? await request<TrainingDetail>('/trainings', { method: 'POST', body: { ...body, team_id: selectedTeam } })
         : await request<TrainingDetail>(`/trainings/${detail?.id}`, { method: 'PUT', body })
+      let finalTraining = saved
+      if (mediaFiles.length) {
+        try {
+          const mediaBody = new FormData(); mediaFiles.forEach((file) => mediaBody.append('files', file))
+          const media_assets = await request<TrainingDetail['media_assets']>(`/trainings/${saved.id}/media`, { method: 'POST', body: mediaBody })
+          finalTraining = { ...saved, media_assets: [...saved.media_assets, ...media_assets] }
+        } catch (cause) { setError(`Session saved, but its media could not be uploaded: ${errorText(cause)}`) }
+      }
       const items = await request<TrainingListItem[]>(`/trainings?team_id=${selectedTeam}`)
-      setTrainings(items); setSelectedTraining(saved.id); setDetail(saved); setEditorMode(null); setDetailOpen(true)
+      setTrainings(items); setSelectedTraining(saved.id); setDetail(finalTraining); setEditorMode(null); setDetailOpen(true); setMediaFiles([]); form.reset()
       setSuccess(editorMode === 'create' ? 'Manual training session created.' : 'Training session updated.')
     } catch (cause) { setError(errorText(cause)) } finally { setBusy(false) }
   }
@@ -166,6 +179,7 @@ export function CoachTrainingsPage() {
     {editorMode && <section className="wb-card" style={{ marginTop: 16 }}><div className="wb-card-heading"><h2>{editorMode === 'create' ? 'New manual session' : 'Edit manual session'}</h2><button className="wb-button" onClick={() => setEditorMode(null)}>Close</button></div><form className="wb-form" onSubmit={saveTraining}>
       <div className="wb-form-grid"><label className="wb-field">Title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} maxLength={200} required /></label><label className="wb-field">Date and time<input type="datetime-local" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} required /></label></div>
       <div className="wb-form-grid"><label className="wb-field">Total duration (min)<input type="number" min="1" value={draft.duration} onChange={(event) => setDraft({ ...draft, duration: Number(event.target.value) })} required /></label><label className="wb-field">Description<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label></div>
+      <label className="wb-field">Photos or videos (optional)<input type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" onChange={(event) => setMediaFiles(Array.from(event.target.files ?? []))} /></label>
       <div className="wb-card-heading"><h2>Exercises in order</h2><button className="wb-button" type="button" disabled={catalogue.length === 0} onClick={() => setDraft((current) => ({ ...current, exercises: [...current.exercises, { exercise_id: catalogue[0].id, duration: 10, sets: 3, repetitions: 8 }] }))}>+ Add</button></div>
       {draft.exercises.map((item, index) => <div className="wb-exercise-editor" key={`${index}-${item.exercise_id}`}><span className="wb-pill">{index + 1}</span><label className="wb-field wb-exercise-select">Exercise<select value={item.exercise_id} onChange={(event) => updateExercise(index, 'exercise_id', Number(event.target.value))}>{catalogue.map((exercise) => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}</select></label><label className="wb-field">Min<input type="number" min="1" value={item.duration ?? ''} onChange={(event) => updateExercise(index, 'duration', event.target.value === '' ? null : Number(event.target.value))} /></label><label className="wb-field">Sets<input type="number" min="1" value={item.sets ?? ''} onChange={(event) => updateExercise(index, 'sets', event.target.value === '' ? null : Number(event.target.value))} /></label><label className="wb-field">Reps<input type="number" min="1" value={item.repetitions ?? ''} onChange={(event) => updateExercise(index, 'repetitions', event.target.value === '' ? null : Number(event.target.value))} /></label><div className="wb-inline-actions"><button className="wb-button" type="button" onClick={() => moveExercise(index, -1)} disabled={index === 0} aria-label="Move exercise up">↑</button><button className="wb-button" type="button" onClick={() => moveExercise(index, 1)} disabled={index === draft.exercises.length - 1} aria-label="Move exercise down">↓</button><button className="wb-button wb-button-danger" type="button" onClick={() => setDraft((current) => ({ ...current, exercises: current.exercises.filter((_, position) => position !== index) }))} aria-label="Remove exercise">×</button></div></div>)}
       {!draft.exercises.length && <EmptyState>Add at least one exercise from the catalogue.</EmptyState>}
@@ -185,6 +199,11 @@ export function CoachTrainingsPage() {
           <span className="wb-pill">{detail.exercises.length} exercises</span>
         </div>
         <p className="wb-modal-description">{detail.description || 'No description.'}</p>
+        <MediaGallery assets={detail.media_assets} label="Session photos and videos" onRemove={(id) => {
+          void request(`/media/${id}`, { method: 'DELETE' }).then(() => setDetail((current) => current ? { ...current, media_assets: current.media_assets.filter((asset) => asset.id !== id) } : current))
+            .catch((cause: unknown) => setError(errorText(cause)))
+        }} />
+        <MediaUploader path={`/trainings/${detail.id}/media`} onUploaded={(assets) => setDetail({ ...detail, media_assets: [...detail.media_assets, ...assets] })} />
         <div className="wb-modal-actions">
           <button className="wb-button" onClick={startEdit} disabled={detail.creation_mode !== 'MANUAL' || assignments.length > 0}>Edit session</button>
           <button className="wb-button wb-button-danger" onClick={() => void deleteTraining()} disabled={busy || detail.creation_mode !== 'MANUAL' || assignments.length > 0}>Delete session</button>
@@ -197,6 +216,7 @@ export function CoachTrainingsPage() {
             <div className="wb-modal-metadata"><span className="wb-pill">{link.duration ?? '—'} min</span><span className="wb-pill">{link.sets ?? '—'} sets</span><span className="wb-pill">{link.repetitions ?? '—'} reps</span></div>
             <p>{link.exercise.description || 'No description.'}</p>
             <div className="wb-modal-metadata"><span className="wb-muted">Difficulty: {link.exercise.difficulty || 'Not set'}</span><span className="wb-muted">Equipment: {link.exercise.equipment || 'Not set'}</span></div>
+            <MediaGallery assets={link.exercise.media_assets} label="Exercise photos and videos" />
           </div>)}
         </section>
 

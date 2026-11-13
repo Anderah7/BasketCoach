@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { dashboardPath } from '../types/auth'
 import type { UserRole } from '../types/auth'
 import { Brand } from './Brand'
+import { Avatar } from './ProtectedMedia'
 import './dashboard.css'
 
 type IconName = 'grid' | 'team' | 'ball' | 'calendar' | 'spark' | 'profile' | 'logout'
@@ -101,7 +102,7 @@ export function DashboardLayout() {
           </nav>
           <div className="sidebar-bottom">
             <div className="sidebar-profile">
-              <span className="sidebar-avatar">{user.name.charAt(0).toUpperCase()}</span>
+              <Avatar id={user.avatar_media_id} name={user.name} className="sidebar-avatar" />
               <span><strong>{user.name}</strong><small>{roleLabel[user.role]}</small></span>
             </div>
             <button className="sidebar-logout" onClick={handleLogout}><NavIcon name="logout" /> Log out</button>
@@ -113,7 +114,7 @@ export function DashboardLayout() {
             <div><span className="topbar-kicker">BASKETCOACH / {roleLabel[user.role].toUpperCase()}</span><strong>{current}</strong></div>
             <div className="topbar-right"><span className="topbar-date">{today}</span><div className="topbar-account" ref={accountRef}>
               <button type="button" className="topbar-account-trigger" onClick={() => setAccountOpen((open) => !open)} aria-expanded={accountOpen} aria-controls="account-popover" aria-label={`Open account menu for ${user.name}`}>
-                <span className="topbar-user">{user.name.charAt(0).toUpperCase()}</span><span className="topbar-account-chevron" aria-hidden="true">⌄</span>
+                <Avatar id={user.avatar_media_id} name={user.name} className="topbar-user" /><span className="topbar-account-chevron" aria-hidden="true">⌄</span>
               </button>
               {accountOpen && <div className="account-popover" id="account-popover">
                 <div className="account-popover-header"><strong>{user.name}</strong><span>{user.email}</span><small>{roleLabel[user.role]}</small></div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DetailModal } from '../components/DetailModal'
+import { MediaGallery } from '../components/ProtectedMedia'
 import { EmptyState, Notice, PageHeading, StatusPill } from '../components/WorkspaceUI'
 import { useAuth } from '../contexts/AuthContext'
 import { categoryLabel, errorText, formatDateTime } from '../services/format'
@@ -66,6 +67,7 @@ export function PlayerTrainingsPage() {
       {detail && <>
         <div className="wb-modal-summary"><StatusPill status={detail.status} /><span className="wb-pill">{formatDateTime(detail.date)}</span><span className="wb-pill">{detail.duration} min</span></div>
         <p className="wb-modal-description">{detail.description || 'No description.'}</p>
+        <MediaGallery assets={detail.media_assets} label="Session photos and videos" />
         <div className="wb-modal-section"><div className="wb-split-action"><h3>Your progress</h3><strong>{total ? Math.round(done / total * 100) : 0}%</strong></div>
           <span className="wb-muted">{done} of {total} exercises completed</span><div className="wb-progress"><span style={{ width: `${total ? done / total * 100 : 0}%` }} /></div>
           {detail.status === 'CANCELLED' && <Notice>This assignment is cancelled. Your earlier progress is kept, but can no longer be changed.</Notice>}
@@ -76,6 +78,7 @@ export function PlayerTrainingsPage() {
             <div className="wb-modal-metadata"><span className="wb-pill">{item.duration ?? '—'} min</span><span className="wb-pill">{item.sets ?? '—'} sets</span><span className="wb-pill">{item.repetitions ?? '—'} reps</span></div>
             <p>{item.exercise.description || 'No description.'}</p>
             <div className="wb-modal-metadata"><span className="wb-muted">Difficulty: {item.exercise.difficulty || 'Not set'}</span><span className="wb-muted">Equipment: {item.exercise.equipment || 'Not set'}</span></div>
+            <MediaGallery assets={item.exercise.media_assets} label="Exercise photos and videos" />
             <div className="wb-split-action"><span className="wb-muted">{item.completed_at ? `Completed: ${formatDateTime(item.completed_at)}` : 'Pending'}</span>
               <label className="wb-checkbox"><input type="checkbox" checked={item.completed} disabled={detail.status === 'CANCELLED' || busyExercise !== null} onChange={(event) => void updateProgress(item.training_exercise_id, event.target.checked)} />Completed</label>
             </div>

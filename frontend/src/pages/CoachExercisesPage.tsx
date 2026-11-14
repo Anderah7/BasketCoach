@@ -12,7 +12,9 @@ import type { Exercise, ExerciseCategory } from '../types/sports'
 export function CoachExercisesPage() {
   const { request, user } = useAuth()
   const [exercises, setExercises] = useState<Exercise[]>([])
+  const [collection, setCollection] = useState<'mine' | 'catalogue'>('mine')
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -50,6 +52,7 @@ export function CoachExercisesPage() {
         } catch (cause) { setError(`Exercise created, but its media could not be uploaded: ${errorText(cause)}`) }
       }
       setExercises((current) => [...current, finalExercise].sort((a, b) => a.name.localeCompare(b.name)))
+      setCollection('mine'); setSearch(''); setCategoryFilter('')
       setName(''); setDescription(''); setDifficulty(''); setEquipment('')
       setMediaFiles([])
       form.reset()
@@ -57,15 +60,35 @@ export function CoachExercisesPage() {
     } catch (cause) { setError(errorText(cause)) } finally { setBusy(false) }
   }
 
-  const visible = exercises.filter((exercise) => `${exercise.name} ${exercise.category ?? ''}`.toLowerCase().includes(search.toLowerCase()))
-  const ownCount = exercises.filter((exercise) => exercise.created_by === user?.id && !exercise.is_public).length
+  async function changeVisibility(exercise: Exercise) {
+    setBusy(true); setError(null); setSuccess(null)
+    try {
+      const updated = await request<Exercise>(`/exercises/${exercise.id}/visibility`, { method: 'PATCH', body: { is_public: !exercise.is_public } })
+      setExercises((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setSelectedExercise((current) => current?.id === updated.id ? updated : current)
+      setSuccess(updated.is_public ? 'Exercise published. Other users can now find it in the catalogue.' : 'Exercise is private again. Existing training sessions keep their exercise references.')
+    } catch (cause) { setError(errorText(cause)) } finally { setBusy(false) }
+  }
+
+  const myExercises = exercises.filter((exercise) => exercise.created_by === user?.id)
+  const publicExercises = exercises.filter((exercise) => exercise.is_public)
+  const collectionExercises = collection === 'mine' ? myExercises : publicExercises
+  const visible = collectionExercises.filter((exercise) => exercise.name.toLowerCase().includes(search.trim().toLowerCase())
+    && (!categoryFilter || (categoryFilter === 'uncategorised' ? exercise.category === null : exercise.category === categoryFilter)))
 
   return <main className="wb-page">
-    <PageHeading kicker="CATALOGUE" title="Exercises" description="Browse the catalogue and add private exercises to your sessions." />
+    <PageHeading kicker="CATALOGUE" title="Exercises" description="Browse by name or category, create exercises and share your drills with the community." />
     {error && <Notice kind="error">{error}</Notice>}{success && <Notice kind="success">{success}</Notice>}
-    <div className="wb-metrics"><div className="wb-metric"><span className="wb-metric-label">Available exercises</span><strong className="wb-metric-value">{exercises.length}</strong><span className="wb-metric-note">Public and your private exercises</span></div><div className="wb-metric"><span className="wb-metric-label">Your private exercises</span><strong className="wb-metric-value">{ownCount}</strong><span className="wb-metric-note">Visible only to you</span></div></div>
+    <div className="wb-metrics"><div className="wb-metric"><span className="wb-metric-label">My exercises</span><strong className="wb-metric-value">{myExercises.length}</strong><span className="wb-metric-note">Created manually or with AI, private or public</span></div><div className="wb-metric"><span className="wb-metric-label">Public catalogue</span><strong className="wb-metric-value">{publicExercises.length}</strong><span className="wb-metric-note">Exercises shared with the community</span></div></div>
     <div className="wb-grid">
-      <section className="wb-card"><div className="wb-card-heading"><h2>Available catalogue</h2><span className="wb-pill">{visible.length} results</span></div><label className="wb-field" style={{ marginBottom: 14 }}>Search<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or category" /></label>
+      <section className="wb-card"><div className="wb-card-heading"><h2>{collection === 'mine' ? 'My exercises' : 'Public catalogue'}</h2><span className="wb-pill">{visible.length} results</span></div>
+        <div className="wb-collection-switch" role="group" aria-label="Exercise collection">
+          <button type="button" aria-pressed={collection === 'mine'} onClick={() => setCollection('mine')}>My exercises <span>{myExercises.length}</span></button>
+          <button type="button" aria-pressed={collection === 'catalogue'} onClick={() => setCollection('catalogue')}>Public catalogue <span>{publicExercises.length}</span></button>
+        </div>
+        <div className="wb-form-grid" style={{ marginBottom: 14 }}><label className="wb-field">Search by name<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Exercise name" /></label>
+          <label className="wb-field">Filter by category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{exerciseCategories.map((item) => <option key={item} value={item}>{categoryLabel(item)}</option>)}<option value="uncategorised">Uncategorised</option></select></label>
+        </div>
         {visible.length ? <ul className="wb-list">{visible.map((exercise) => <li className="wb-list-row" key={exercise.id}><div className="wb-list-main"><strong>{exercise.name}</strong><span>{categoryLabel(exercise.category)} · {exercise.difficulty ?? 'Difficulty not set'}</span></div><button className="wb-button" onClick={() => setSelectedExercise(exercise)}>View details</button></li>)}</ul> : <EmptyState>No exercises match your search.</EmptyState>}
       </section>
       <section className="wb-card"><div className="wb-card-heading"><div><h2>New exercise</h2><p>It will be saved as a private exercise on your account.</p></div></div><form className="wb-form" onSubmit={createExercise}>
@@ -78,7 +101,12 @@ export function CoachExercisesPage() {
       </form></section>
     </div>
     {selectedExercise && <DetailModal title={selectedExercise.name} onClose={() => setSelectedExercise(null)}>
+      {error && <Notice kind="error">{error}</Notice>}{success && <Notice kind="success">{success}</Notice>}
       <div className="wb-modal-summary"><span className="wb-pill">{categoryLabel(selectedExercise.category)}</span><span className="wb-pill">{selectedExercise.is_public ? 'Public' : 'Private'}</span></div>
+      {selectedExercise.created_by === user?.id && <section className="wb-modal-section"><h3>Catalogue visibility</h3>
+        <p className="wb-modal-description">{selectedExercise.is_public ? 'This exercise and its photos or videos are available to other users in the public catalogue.' : 'This exercise is private. You can use it in your sessions and share it with assigned players.'}</p>
+        <div><button className="wb-button wb-button-primary" type="button" disabled={busy} onClick={() => void changeVisibility(selectedExercise)}>{busy ? 'Saving...' : selectedExercise.is_public ? 'Make private' : 'Make public'}</button></div>
+      </section>}
       <section className="wb-modal-section"><h3>How to perform it</h3><p className="wb-modal-description">{selectedExercise.description || 'No description.'}</p></section>
       <section className="wb-modal-section"><h3>Exercise details</h3><div className="wb-modal-metadata"><span className="wb-pill">Difficulty: {selectedExercise.difficulty || 'Not set'}</span><span className="wb-pill">Equipment: {selectedExercise.equipment || 'Not set'}</span></div></section>
       <MediaGallery assets={selectedExercise.media_assets} label="Photos and videos" onRemove={selectedExercise.created_by === user?.id ? (id) => {

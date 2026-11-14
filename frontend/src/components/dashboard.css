@@ -221,4 +221,35 @@
 .media-uploader { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
 .media-error { color: #b72d2d; }
 .roster-person { display: inline-flex; align-items: center; gap: 9px; }
+.wb-collection-switch { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px; margin-bottom: 18px; border: 1px solid #e1e8ec; border-radius: 12px; background: #f3f6f8; }
+.wb-collection-switch button { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 8px; padding: 11px 13px; border: 0; border-radius: 8px; background: transparent; color: #617787; font: inherit; font-size: .77rem; font-weight: 700; cursor: pointer; }
+.wb-collection-switch button[aria-pressed="true"] { background: #173b56; color: #fff; box-shadow: 0 2px 5px #10233b18; }
+.wb-collection-switch button:hover { background: #e5ecef; color: #173b56; }
+.wb-collection-switch button[aria-pressed="true"]:hover { background: #204d6e; color: #fff; }
+.wb-collection-switch button:focus-visible { outline: 3px solid #f1bd98; outline-offset: 2px; }
+.wb-collection-switch button span { padding: 2px 6px; border-radius: 5px; background: #ffffff25; font-size: .7rem; }
 .roster-avatar { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #f59c63; color: #10233b; overflow: hidden; flex: none; font-size: 13px; font-weight: 700; }
+.wb-team-cards { display: grid; gap: 12px; }
+.wb-team-card, .wb-roster-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 18px; border: 1px solid #dfe8ed; border-radius: 14px; background: #f8fafb; text-align: left; color: #213a4c; cursor: pointer; transition: background .15s, border-color .15s; }
+.wb-team-card:hover, .wb-roster-card:hover { border-color: #e6b18a; background: #fff7f0; }
+.wb-team-card:focus-visible, .wb-roster-card:focus-visible { outline: 3px solid #f1bd98; outline-offset: 3px; }
+.wb-team-card-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; overflow-wrap: anywhere; }
+.wb-team-card-text strong { font-size: .91rem; }
+.wb-team-card-text > span { font-size: .77rem; color: #667e8e; }
+.wb-team-card-text small { font-size: .72rem; color: #7f919d; }
+.wb-card-arrow { flex: none; color: #bd7549; font-size: 1.25rem; }
+.wb-roster-card .roster-avatar { width: 44px; height: 44px; }
+.wb-invitation { display: flex; align-items: flex-start; flex-direction: column; gap: 8px; padding: 17px; border-radius: 12px; background: #f2f6f8; }
+.wb-invitation > span { font-size: .74rem; font-weight: 700; color: #617a8b; }
+.wb-invitation strong { max-width: 100%; overflow-wrap: anywhere; font-size: 1.02rem; letter-spacing: .04em; color: #173b56; }
+.wb-invitation small { color: #7c8d98; line-height: 1.5; }
+.wb-player-identity { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; }
+.wb-player-identity > div { min-width: 0; }
+.wb-player-identity h3 { margin: 0 0 5px; font-size: 1.15rem; }
+.wb-player-identity p { margin: 0 0 10px; color: #708594; font-size: .82rem; overflow-wrap: anywhere; }
+.wb-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.wb-profile-grid > div { padding: 13px; border: 1px solid #e5ecef; border-radius: 10px; background: #fafcfd; }
+.wb-profile-grid dt { margin-bottom: 6px; color: #708594; font-size: .72rem; }
+.wb-profile-grid dd { margin: 0; color: #213a4c; font-size: .83rem; font-weight: 700; overflow-wrap: anywhere; }
+.wb-modal-section h4 { margin: 0 0 8px; color: #4c6577; font-size: .81rem; }
+@media (max-width: 420px) { .wb-profile-grid { grid-template-columns: 1fr; } .wb-team-card, .wb-roster-card { padding: 13px; gap: 10px; } }

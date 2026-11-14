@@ -107,6 +107,14 @@ class TeamPlayerResponse(BaseModel):
     avatar_media_id: int | None = None
 
 
+class TeamPlayerDetailResponse(TeamPlayerResponse):
+    team_id: int
+    birth_date: date | None
+    email: EmailStr
+    is_active: bool
+    created_at: datetime
+
+
 class PlayerProfileCoachUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -137,6 +145,12 @@ class ExerciseResponse(BaseModel):
     created_by: int | None
     is_public: bool
     media_assets: list[MediaAssetResponse] = Field(default_factory=list)
+
+
+class ExerciseVisibilityUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    is_public: StrictBool
 
 
 class TrainingExerciseInput(BaseModel):

@@ -50,6 +50,9 @@ function englishDetail(detail: string, status: number): string {
     'El servicio IA tardó demasiado': 'The AI service took too long to respond.',
     'No se pudo contactar con el servicio IA': 'Could not contact the AI service.',
     'La autenticación interna con el servicio IA falló': 'Internal authentication with the AI service failed.',
+    'Gemini rechazó la clave API o el acceso al modelo': 'The AI service API key or model access is not configured correctly.',
+    'Gemini rechazó la solicitud (HTTP 400). Consulta el motivo en la consola de aiTrainingService.': 'The AI provider rejected the request. Ask the administrator to check the AI service diagnostics.',
+    'Gemini no permite generar con la configuración actual del proyecto. Consulta el diagnóstico en la consola de aiTrainingService.': 'Generation is unavailable with the current AI project configuration. Contact the administrator.',
   }
   if (translations[detail]) return translations[detail]
   const missingExercise = detail.match(/^Ejercicio (\d+) no encontrado$/)

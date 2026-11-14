@@ -1,4 +1,6 @@
+import logging
 import os
+import re
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -12,6 +14,7 @@ from schemas import ExercisesProposal, GenerateRequest, GenerationType, Training
 
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_INSTRUCTIONS = """Eres un asistente de planificación deportiva de baloncesto.
@@ -61,13 +64,28 @@ def _reason_name(reason: object) -> str:
 
 _GEMINI_SCHEMA_KEYS = {
     "$id", "$defs", "$ref", "$anchor", "type", "format", "title", "description",
-    "enum", "items", "prefixItems", "minItems", "maxItems", "minimum", "maximum",
+    "enum", "items", "prefixItems",
     "anyOf", "oneOf", "properties", "additionalProperties", "required",
+}
+
+_SOFT_CONSTRAINTS = {
+    "minItems": "Minimum number of items",
+    "maxItems": "Maximum number of items",
+    "minimum": "Minimum value",
+    "maximum": "Maximum value",
+    "minLength": "Minimum text length",
+    "maxLength": "Maximum text length",
 }
 
 
 def _gemini_json_schema(model: type[ExercisesProposal] | type[TrainingProposal]) -> dict:
-    """Keep the JSON Schema fields supported by Gemini; Pydantic validates the full result."""
+    """Keep the grammar small; enforce all original bounds with Pydantic after generation.
+
+    Bounded arrays of nested objects and numeric bounds multiply Gemini's grammar
+    states and can cause HTTP 400 even though each keyword is supported. Express
+    those limits as guidance instead of decoder constraints.
+    https://ai.google.dev/gemini-api/docs/structured-output#simplifying-complex-schemas
+    """
     def clean(node: dict) -> dict:
         result = {}
         for key, value in node.items():
@@ -81,9 +99,38 @@ def _gemini_json_schema(model: type[ExercisesProposal] | type[TrainingProposal])
                 result[key] = [clean(schema) for schema in value]
             else:
                 result[key] = value
+        guidance = [f"{label}: {node[key]}." for key, label in _SOFT_CONSTRAINTS.items() if key in node]
+        if guidance:
+            result["description"] = " ".join(filter(None, [result.get("description"), *guidance]))
         return result
 
     return clean(model.model_json_schema())
+
+
+def _provider_error_message(exc: errors.APIError, api_key: str) -> str:
+    message = str(exc.message or exc.status or "No diagnostic message")
+    if api_key:
+        message = message.replace(api_key, "[REDACTED]")
+    message = re.sub(r"AIza[\w-]+", "[REDACTED]", message)
+    return " ".join(message.split())[:1000]
+
+
+def _is_api_key_error(exc: errors.APIError) -> bool:
+    # Gemini also reports invalid/expired API keys as HTTP 400.
+    payload = exc.details if isinstance(exc.details, dict) else {}
+    details = payload.get("error")
+    if not isinstance(details, dict):
+        details = payload
+    metadata = details.get("details")
+    reasons = {
+        item.get("reason")
+        for item in (metadata if isinstance(metadata, list) else [])
+        if isinstance(item, dict)
+    }
+    message = str(exc.message or "").lower()
+    return bool(reasons & {"API_KEY_INVALID", "API_KEY_EXPIRED"}) or any(
+        text in message for text in ("api key not valid", "api key expired", "api key is invalid")
+    )
 
 
 class GeminiProposalProvider:
@@ -120,14 +167,23 @@ class GeminiProposalProvider:
         except errors.APIError as exc:
             if exc.code in (408, 504):
                 raise LLMTimeoutError("El proveedor tardó demasiado") from exc
-            if exc.code in (401, 403):
+            if exc.code in (401, 403) or _is_api_key_error(exc):
                 raise LLMConfigurationError("Gemini rechazó la clave API o el acceso al modelo") from exc
             if exc.code == 404:
                 raise LLMConfigurationError(f"El modelo {model} no está disponible para tu proyecto (HTTP 404)") from exc
             if exc.code == 429:
                 raise LLMQuotaError("Se alcanzó la cuota de Gemini; comprueba los límites de tu proyecto") from exc
             if exc.code == 400:
-                raise LLMRequestError("Gemini rechazó el formato de la solicitud (HTTP 400)") from exc
+                logger.warning("Gemini HTTP 400 (%s): %s", exc.status, _provider_error_message(exc, api_key))
+                if exc.status == "FAILED_PRECONDITION":
+                    raise LLMConfigurationError(
+                        "Gemini no permite generar con la configuración actual del proyecto. "
+                        "Consulta el diagnóstico en la consola de aiTrainingService."
+                    ) from exc
+                raise LLMRequestError(
+                    "Gemini rechazó la solicitud (HTTP 400). "
+                    "Consulta el motivo en la consola de aiTrainingService."
+                ) from exc
             raise LLMUnavailableError(f"Gemini devolvió un error HTTP {exc.code}") from exc
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise LLMTimeoutError("El proveedor tardó demasiado") from exc

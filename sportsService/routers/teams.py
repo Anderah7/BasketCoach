@@ -9,6 +9,7 @@ from schemas import (
     PlayerProfileCoachUpdate,
     TeamCreate,
     TeamPlayerResponse,
+    TeamPlayerDetailResponse,
     TeamResponse,
 )
 from security import get_current_user
@@ -98,6 +99,31 @@ def get_team_players(
         .options(joinedload(PlayerProfile.user).joinedload(User.avatar_media))
     ).all()
     return [_player_response(profile) for profile in profiles]
+
+
+@router.get("/{team_id}/players/{player_id}", response_model=TeamPlayerDetailResponse)
+def get_team_player(
+    team_id: int,
+    player_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_coached_team(team_id, current_user, db)
+    profile = db.scalar(
+        select(PlayerProfile)
+        .where(PlayerProfile.user_id == player_id, PlayerProfile.team_id == team_id)
+        .options(joinedload(PlayerProfile.user).joinedload(User.avatar_media))
+    )
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Player not found in this team")
+    return TeamPlayerDetailResponse(
+        **_player_response(profile).model_dump(),
+        team_id=team_id,
+        birth_date=profile.birth_date,
+        email=profile.user.email,
+        is_active=profile.user.is_active,
+        created_at=profile.user.created_at,
+    )
 
 
 @router.patch("/{team_id}/players/{player_id}", response_model=TeamPlayerResponse)

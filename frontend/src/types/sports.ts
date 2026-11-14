@@ -27,6 +27,14 @@ export interface TeamPlayer {
   avatar_media_id: number | null
 }
 
+export interface TeamPlayerDetail extends TeamPlayer {
+  team_id: number
+  birth_date: string | null
+  email: string
+  is_active: boolean
+  created_at: string
+}
+
 export interface MediaAsset {
   id: number
   media_type: 'image' | 'video'

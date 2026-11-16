@@ -13,7 +13,8 @@ function messageResponse(message) {
     return {
         id: message._id.toHexString(), conversation_id: message.conversationId.toHexString(),
         sender_id: message.senderId, client_message_id: message.clientMessageId,
-        type: message.type, text: message.text, media: message.media,
+        type: message.type, text: message.text,
+        media: message.media ? { content_type: message.media.contentType, size_bytes: message.media.sizeBytes } : null,
         created_at: message.createdAt.toISOString()
     };
 }
@@ -133,7 +134,25 @@ async function initializeChatStore(db) {
         }
     }
 
-    return { getOrCreate, requireConversation, listConversations, history, saveText };
+    async function saveMedia(message) {
+        try {
+            const result = await messages.insertOne(message);
+            if (!result.acknowledged) throw new ServiceError(503, 'STORAGE_UNAVAILABLE', 'Message was not acknowledged by storage');
+            return { message, duplicate: false };
+        } catch (error) {
+            if (error.code !== 11000) throw error;
+            const existing = await messages.findOne({ conversationId: message.conversationId, senderId: message.senderId, clientMessageId: message.clientMessageId });
+            if (!existing || existing.type !== message.type || existing.text !== message.text ||
+                existing.media?.sha256 !== message.media.sha256 || existing.media?.sizeBytes !== message.media.sizeBytes) {
+                throw new ServiceError(409, 'IDEMPOTENCY_CONFLICT', 'This client message ID was already used for different content');
+            }
+            return { message: existing, duplicate: true };
+        }
+    }
+
+    async function findMessageById(id) { return messages.findOne({ _id: objectId(id) }); }
+
+    return { getOrCreate, requireConversation, listConversations, history, saveText, saveMedia, findMessageById };
 }
 
 module.exports = { initializeChatStore, conversationResponse, messageResponse, MESSAGE_TYPES };

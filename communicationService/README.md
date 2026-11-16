@@ -11,6 +11,9 @@ PORT=3001
 MONGODB_URI=mongodb://127.0.0.1:27017
 MONGODB_DB_NAME=basketcoach_communication
 SPORTS_SERVICE_URL=http://127.0.0.1:8001
+MEDIA_ROOT=./uploads
+MAX_IMAGE_SIZE_MB=10
+MAX_VIDEO_SIZE_MB=50
 ```
 
 `MONGODB_URI` specifies the MongoDB server. `MONGODB_DB_NAME` selects the existing database. `SPORTS_SERVICE_URL` is used for `GET /users/me` and `GET /users/{id}/public` (including `friendship_status`). `CORS_ORIGINS` optionally overrides the allowed HTTP and WebSocket origins; defaults to `http://localhost:5173,http://127.0.0.1:5173`. Configuration stays in `.env`; there are no new secrets or example env files. The file is loaded relative to this service.
@@ -103,7 +106,7 @@ Send a text message:
 | `message.received` | Contains `message`. Broadcast to the other connected tabs of both participants. |
 | `error` | Contains `status`, `code`, `message` and `client_message_id` when valid/available (otherwise null). |
 
-A message contains `id`, `conversation_id`, `sender_id`, `client_message_id`, `type`, `text`, `media: null`, `created_at` (UTC ISO date). The sender identity is derived from the authenticated connection. Authentication, membership and friendship are checked again for every send. There are heartbeat, connection, pending-ticket, queue and outgoing-buffer limits.
+A message contains `id`, `conversation_id`, `sender_id`, `client_message_id`, `type`, `text`, `media`, `created_at` (UTC ISO date). TEXT messages have `media: null`. IMAGE/VIDEO messages have nullable caption `text` and `media: { content_type, size_bytes }`; storage keys, filesystem paths and hashes are never exposed. The sender identity comes from authentication. There are heartbeat, connection, pending-ticket, queue and outgoing-buffer limits.
 
 After a lost acknowledgement, resend the same ID and text. The unique index returns the original message with `duplicate: true`, without rebroadcasting it. Reusing an ID with different content gives 409 `IDEMPOTENCY_CONFLICT`. After removing friendship, sending returns 403 `NOT_FRIENDS`. A storage failure produces an error, never a success acknowledgement; retry using the same ID.
 
@@ -159,11 +162,51 @@ ws.close();
 
 Try a non-friend, a third user's token, and unfriending through the existing friendship UI: new sends must fail while earlier messages remain in history. Native Swagger does not open WebSockets; use the console or a WebSocket client for real-time events. Use `wss://` and HTTPS when deploying outside local development.
 
+## Images and videos
+
+Files are uploaded over HTTP, never inside a WebSocket frame. The HTTP request creates the message and returns the same `message.ack` shape as text delivery. After MongoDB acknowledges persistence, `message.received` is published to every connected tab of both participants, including the uploading user. Existing TEXT socket sends are unchanged; IMAGE/VIDEO socket sends are rejected.
+
+| Method and path (relative to `/api/communication`) | Purpose |
+| --- | --- |
+| `GET /media/config` | Authenticated list of image/video MIME types and size limits in bytes. |
+| `POST /conversations/{id}/messages/media` | JWT-protected multipart upload: required `file`, required `client_message_id`, optional `text` caption (maximum 4,000 characters). One file per request. Returns 201, or 200 for an identical retry. |
+| `GET /messages/{id}/media` | JWT-protected download for a conversation participant. Supports single byte ranges (206) and returns 416 with `Content-Range: bytes */size` for unavailable/unsupported ranges. |
+| `HEAD /messages/{id}/media` | Same authorization and headers, with no response body. |
+
+`MEDIA_ROOT` is resolved relative to communicationService unless absolute. It defaults to `communicationService/uploads`, which is excluded from Git and is never served as a public/static directory. Configure `MAX_IMAGE_SIZE_MB` (10 by default) and `MAX_VIDEO_SIZE_MB` (50 by default) in `.env`; each unit is 1,048,576 bytes, and positive integers up to 1024 are accepted. Limits apply while streaming and again according to the detected content type. JPEG, PNG, WebP, MP4 and WebM are the only allowed types. Binary format detection uses `file-type`; supplied filenames/extensions never determine the stored type or path. This is format inspection, not a full media decoding/transcoding pipeline; playback still depends on browser codec support.
+
+Files receive random 128-bit internal keys. MongoDB stores the key, detected content type, byte count and SHA-256 in the existing message document; no file bytes or additional user records are stored. Captions, bytes and type must match when reusing a `client_message_id`; different content returns 409. Parallel identical retries keep exactly one MongoDB message and one final file.
+
+The service verifies membership and friendship before consuming the upload, then revalidates the JWT/account and friendship before inserting. Downloads require membership and current JWT validation, but not an ongoing friendship, so historical media survives unfriending. Downloads use `private, no-store`, `nosniff` and a fixed safe inline filename. IDs are validated; filesystem paths and user filenames are not accepted by the download endpoint.
+
+Each new upload has a small durable marker and a partial file under `uploads/.pending`. Validation failures, disconnects, duplicate copies and failed inserts clean up only the files created by that request. If an insert has an uncertain outcome and MongoDB is unavailable, the service retains the new file and marker rather than deleting a potentially committed attachment. On the next startup, markers are checked against MongoDB: committed files are retained and unfinished new uploads are removed. Existing messages and unrelated files are never purged. This recovery procedure, like in-memory WebSocket routing, assumes a single service instance owns the media directory. Back up the directory together with MongoDB.
+
+Manual HTTP example from the frontend browser console, using the `request` helper and `conversation` from above:
+
+```javascript
+const chooser = document.createElement('input');
+chooser.type = 'file';
+chooser.accept = 'image/jpeg,image/png,image/webp,video/mp4,video/webm';
+chooser.onchange = async () => {
+  const form = new FormData();
+  form.append('client_message_id', crypto.randomUUID());
+  form.append('text', 'Optional practice comment');
+  form.append('file', chooser.files[0]);
+  const response = await fetch(`${api}/conversations/${conversation.id}/messages/media`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form
+  });
+  console.log(response.status, await response.json());
+};
+chooser.click();
+```
+
+Do not set multipart Content-Type yourself: the browser supplies the boundary. The receiving user's socket gets `message.received` with metadata only. For Range checks, request the protected download with `Authorization: Bearer <JWT>` and `Range: bytes=0-1023` in Postman. A public browser URL without Authorization is intentionally rejected.
+
 ## Storage and deployment limits
 
 - `conversations`: `_id`, canonical `pairKey` (`lowId:highId`), exactly two `participantIds`, `createdAt`. Unique `uq_private_pair` and participant lookup index prevent duplicate conversations under concurrent creation.
 - `messages`: `_id`, `conversationId`, `senderId`, `clientMessageId`, `type`, `text`, `media`, `createdAt`. Unique `(conversationId, senderId, clientMessageId)` prevents retry duplicates; `(conversationId, createdAt, _id)` supports history and last-message lookup.
-- MongoDB collection validators reserve `TEXT`, `IMAGE`, `VIDEO`. Only TEXT is implemented; future `media` objects can hold a relative storage key under `communicationService/uploads` plus MIME/type metadata. There is no upload endpoint or multimedia persistence yet.
+- The existing MongoDB validator already supports `TEXT`, `IMAGE`, `VIDEO` and media metadata; existing documents and indexes need no migration.
 - Conversation summaries derive their last message from persisted messages, so no replica-set transaction is required on local standalone MongoDB. Each message is inserted atomically before acknowledgement. Conversation creation is an atomic upsert with a unique-index conflict fallback.
 - Friendships live in PostgreSQL and messages in MongoDB: a friendship deletion concurrent with an already authorized, in-flight send cannot be atomic across both services. Later sends always recheck friendship. There is no friendship cache.
 - Tickets and connected sockets belong to one process. Multiple instances require shared single-use ticket storage and a pub/sub channel for broadcasts (plus appropriate routing); process restarts invalidate tickets and disconnect sockets but preserve MongoDB history.
@@ -183,4 +226,4 @@ $env:BASKETCOACH_MONGOD_PATH = 'C:\Program Files\MongoDB\Server\9.0\bin\mongod.e
 npm test
 ```
 
-Adjust the binary path to the installed version and install `apiGateway` dependencies before running the integration suite. Without this variable, that suite is visibly skipped; the mock checks still run. Coverage includes friendships, concurrent creation/retries, membership, tickets, real-time multi-tab delivery through the Gateway, pagination, storage errors, invalid frames and retained history after unfriending. Gateway's existing sports multipart/JWT regression check can also be run from `apiGateway` with `node --test tests/media-proxy.test.js`.
+Adjust the binary path to the installed version and install `apiGateway` dependencies before running the integration suite. Without this variable, those suites are visibly skipped; mock/range checks still run. Media checks use a separate temporary upload directory under the temporary MongoDB data directory. Coverage includes all supported formats, multipart forwarding, authenticated downloads/HEAD/Range, content spoofing, both size limits, concurrent retries, aborted uploads, insert rollback, uncertain-commit recovery, and media history after unfriending. Gateway's existing sports multipart/JWT regression check can also be run from `apiGateway` with `node --test tests/media-proxy.test.js`.

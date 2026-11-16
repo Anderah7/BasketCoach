@@ -39,6 +39,7 @@ async function startMongo(mongodPath) {
     }
     return {
         uri,
+        mediaRoot: join(directory, 'uploads'),
         async stop() {
             // This client can only reach the temporary server reserved above.
             try { await client.db('admin').command({ shutdown: 1, force: true }); } catch { /* Server closes the socket on shutdown. */ }

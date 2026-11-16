@@ -10,6 +10,43 @@ import { createServer as createViteServer } from 'vite'
 
 const optedIn = process.env.BASKETCOACH_BROWSER_PATH && process.env.BASKETCOACH_MONGOD_PATH
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+// Executed inside Chromium. Pack a canvas-encoded VP8 keyframe into a tiny WebM.
+// This avoids MediaRecorder/captureStream depending on headless compositor timing.
+// Container references: webmproject.org/docs/container and Google's WebP RIFF spec.
+async function syntheticVideo() {
+  const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 32
+  const context = canvas.getContext('2d'); context.fillStyle = 'orange'; context.fillRect(0, 0, 32, 32)
+  const webp = Uint8Array.from(atob(canvas.toDataURL('image/webp', 0.5).split(',')[1]), character => character.charCodeAt(0))
+  let frame
+  for (let offset = 12; offset + 8 <= webp.length;) {
+    const length = new DataView(webp.buffer).getUint32(offset + 4, true)
+    if (new TextDecoder().decode(webp.slice(offset, offset + 4)) === 'VP8 ') { frame = webp.slice(offset + 8, offset + 8 + length); break }
+    offset += 8 + length + length % 2
+  }
+  if (!frame) throw new Error('Test browser did not encode a VP8 image')
+  const hex = value => Uint8Array.from(value.match(/../g), pair => parseInt(pair, 16))
+  const uint = value => { let text = value.toString(16); if (text.length % 2) text = '0' + text; return hex(text) }
+  const concat = (...parts) => {
+    const result = new Uint8Array(parts.reduce((size, part) => size + part.length, 0)); let offset = 0
+    for (const part of parts) { result.set(part, offset); offset += part.length }
+    return result
+  }
+  const size = value => {
+    let width = 1; while (value >= 2 ** (7 * width) - 1) width++
+    const data = new Uint8Array(width)
+    for (let index = width - 1; index >= 0; index--) { data[index] = value % 256; value = Math.floor(value / 256) }
+    data[0] |= 1 << (8 - width); return data
+  }
+  const element = (id, ...parts) => { const data = concat(...parts); return concat(hex(id), size(data.length), data) }
+  const text = value => new TextEncoder().encode(value)
+  const duration = new Uint8Array(8); new DataView(duration.buffer).setFloat64(0, 1000)
+  const header = element('1a45dfa3', element('4286', uint(1)), element('42f7', uint(1)), element('42f2', uint(4)), element('42f3', uint(8)), element('4282', text('webm')), element('4287', uint(2)), element('4285', uint(2)))
+  const info = element('1549a966', element('2ad7b1', uint(1000000)), element('4489', duration), element('4d80', text('test')), element('5741', text('test')))
+  const track = element('1654ae6b', element('ae', element('d7', uint(1)), element('73c5', uint(1)), element('83', uint(1)), element('86', text('V_VP8')), element('23e383', uint(500000000)), element('e0', element('b0', uint(32)), element('ba', uint(32)))))
+  const cluster = element('1f43b675', element('e7', uint(0)), element('a3', concat(Uint8Array.of(0x81, 0, 0, 0x80), frame)), element('a3', concat(Uint8Array.of(0x81, 1, 244, 0x80), frame)))
+  return new File([header, element('18538067', info, track, cluster)], 'test.webm', { type: 'video/webm' })
+}
 async function until(check, description, timeout = 15000) {
   const start = Date.now()
   while (Date.now() - start < timeout) {
@@ -64,7 +101,7 @@ test('two browser users chat through Vite and Gateway, retry failures and retain
   await sports.listen({ host: '127.0.0.1', port: 0 })
   const sportsUrl = `http://127.0.0.1:${sports.server.address().port}`
   const origins = []
-  app = buildApp({ logger: false, config: { mongoUri: mongo.uri, mongoDbName: 'basketcoach_browser_isolated_test', sportsServiceUrl: sportsUrl, corsOrigins: origins } })
+  app = buildApp({ logger: false, config: { mongoUri: mongo.uri, mediaRoot: mongo.mediaRoot, mongoDbName: 'basketcoach_browser_isolated_test', sportsServiceUrl: sportsUrl, corsOrigins: origins } })
   await app.listen({ host: '127.0.0.1', port: 0 })
   const previousSports = process.env.SPORTS_SERVICE_URL, previousCommunication = process.env.COMMUNICATION_SERVICE_URL
   process.env.SPORTS_SERVICE_URL = sportsUrl
@@ -79,7 +116,7 @@ test('two browser users chat through Vite and Gateway, retry failures and retain
   await vite.listen()
   const origin = `http://127.0.0.1:${vite.httpServer.address().port}`
   origins.push(origin)
-  chrome = spawn(process.env.BASKETCOACH_BROWSER_PATH, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${browserDirectory}`, '--no-first-run', '--no-default-browser-check', 'about:blank'], { windowsHide: true, stdio: 'ignore' })
+  chrome = spawn(process.env.BASKETCOACH_BROWSER_PATH, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${browserDirectory}`, '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', 'about:blank'], { windowsHide: true, stdio: 'ignore' })
   let launchError
   chrome.on('error', error => { launchError = error })
   stopped = new Promise(resolve => { chrome.once('exit', resolve); chrome.once('error', resolve) })
@@ -176,6 +213,35 @@ test('two browser users chat through Vite and Gateway, retry failures and retain
   await until(() => evaluate(b, `document.querySelectorAll('.chat-bubble p').length === 58`), 'reconnection recovers all pages without history gaps')
   assert.equal(await countText(b, 'Missed while offline 0'), 1)
   assert.equal(await countText(b, 'Missed while offline 54'), 1)
+
+  // Browser-generated fixtures, uploaded over HTTP; notifications arrive over WS.
+  await until(() => evaluate(a, `document.querySelector('[aria-label="Attach an image or video"]')?.disabled === false`), 'attachment control available')
+  await evaluate(a, `(() => {
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9K4q0AAAAASUVORK5CYII='), character => character.charCodeAt(0));
+    const transfer = new DataTransfer(); transfer.items.add(new File([bytes], 'test.png', { type: 'image/png' }));
+    const input = document.querySelector('[aria-label="Select a chat attachment"]'); input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`)
+  await until(() => evaluate(a, `document.querySelector('.chat-attachment-preview img')?.naturalWidth > 0`), 'image preview before sending')
+  await evaluate(a, `document.querySelector('.chat-send').click()`)
+  await until(() => evaluate(b, `Array.from(document.querySelectorAll('.chat-media-container img')).some(image => image.naturalWidth > 0)`), 'recipient loads protected image')
+  assert.equal(await app.mongo.db.collection('messages').countDocuments({ type: 'IMAGE' }), 1)
+  await cdp.call('Page.bringToFront', {}, a)
+  await evaluate(a, `(async () => {
+    const file = await (${syntheticVideo.toString()})();
+    const transfer = new DataTransfer(); transfer.items.add(file);
+    const input = document.querySelector('[aria-label="Select a chat attachment"]'); input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`)
+  await until(() => evaluate(a, `document.querySelector('.chat-attachment-preview video')?.readyState >= 1`), 'synthetic video is decodable before upload')
+  await send(a, 'Practice clip')
+  await until(() => evaluate(b, `document.querySelector('.chat-video-load') !== null`), 'video notification received')
+  await evaluate(b, `document.querySelector('.chat-video-load').click()`)
+  try {
+    await until(() => evaluate(b, `Array.from(document.querySelectorAll('.chat-media-container video')).some(video => video.readyState >= 1 && video.controls && video.src.startsWith('blob:'))`), 'protected video loads in native player')
+  } catch (error) {
+    console.log(await evaluate(b, `JSON.stringify({ videos: Array.from(document.querySelectorAll('.chat-media-container video')).map(video => ({ ready: video.readyState, code: video.error?.code, message: video.error?.message })), placeholders: Array.from(document.querySelectorAll('.chat-media-placeholder')).map(node => node.textContent) })`))
+    throw error
+  }
+  assert.equal(await app.mongo.db.collection('messages').countDocuments({ type: 'VIDEO' }), 1)
 
   friends = false
   await evaluate(a, `document.querySelector('[aria-label="Refresh conversations and messages"]').click()`)

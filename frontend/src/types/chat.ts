@@ -1,14 +1,23 @@
 import type { PublicUser } from './social'
 
-export interface ChatMessage {
+interface MessageBase {
   id: string
   conversation_id: string
   sender_id: number
   client_message_id: string
-  type: 'TEXT'
-  text: string
-  media: null
   created_at: string
+}
+
+export type ChatMessage = MessageBase & (
+  | { type: 'TEXT'; text: string; media: null }
+  | { type: 'IMAGE' | 'VIDEO'; text: string | null; media: { content_type: string; size_bytes: number } }
+)
+
+export interface MediaConfig {
+  image_max_bytes: number
+  video_max_bytes: number
+  image_types: string[]
+  video_types: string[]
 }
 
 export interface Conversation {
@@ -44,7 +53,13 @@ export interface SendMessage {
   text: string
 }
 
-export interface OutgoingMessage extends SendMessage {
+export interface OutgoingMessage {
+  event: 'message.send'
+  conversation_id: string
+  client_message_id: string
+  type: 'TEXT' | 'IMAGE' | 'VIDEO'
+  text: string
+  file?: File
   created_at: string
   state: 'sending' | 'failed'
   error: string | null

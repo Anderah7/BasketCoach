@@ -1,4 +1,4 @@
-const { join } = require('node:path');
+const { join, resolve } = require('node:path');
 const { loadEnvFile } = require('node:process');
 
 function loadConfig() {
@@ -30,7 +30,19 @@ function loadConfig() {
     }
     const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
         .split(',').map(origin => origin.trim()).filter(Boolean);
-    return { mongoUri, mongoDbName, sportsServiceUrl, port, corsOrigins };
+    function mediaLimit(name, fallback) {
+        const megabytes = Number(process.env[name] || fallback);
+        if (!Number.isSafeInteger(megabytes) || megabytes < 1 || megabytes > 1024) {
+            throw new Error(`${name} must be an integer between 1 and 1024 MB`);
+        }
+        return megabytes * 1024 * 1024;
+    }
+    return {
+        mongoUri, mongoDbName, sportsServiceUrl, port, corsOrigins,
+        mediaRoot: resolve(__dirname, process.env.MEDIA_ROOT || 'uploads'),
+        imageMaxBytes: mediaLimit('MAX_IMAGE_SIZE_MB', 10),
+        videoMaxBytes: mediaLimit('MAX_VIDEO_SIZE_MB', 50)
+    };
 }
 
 module.exports = { loadConfig };

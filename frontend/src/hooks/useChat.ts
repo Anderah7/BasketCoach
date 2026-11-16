@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { ChatConnection } from '../services/chat-connection'
-import { chatSocketUrl, mergeMessages, sortConversations } from '../services/chat'
+import { attachmentType, chatSocketUrl, mergeMessages, parseChatEvent, sortConversations } from '../services/chat'
 import { errorText } from '../services/format'
 import type { ApiRequestOptions } from '../services/api'
-import type { ChatEvent, ChatMessage, ChatTicket, ConnectionState, Conversation, ConversationPage, MessagePage, OutgoingMessage, SendMessage } from '../types/chat'
+import type { ChatEvent, ChatMessage, ChatTicket, ConnectionState, Conversation, ConversationPage, MediaConfig, MessagePage, OutgoingMessage, SendMessage } from '../types/chat'
 import type { PublicProfile } from '../types/social'
 
 interface History {
@@ -37,6 +37,9 @@ export function useChat(selectedId: string | undefined) {
   const [access, setAccess] = useState<'checking' | 'allowed' | 'blocked' | 'unavailable'>('checking')
   const [accessError, setAccessError] = useState<string | null>(null)
   const [accessRevision, setAccessRevision] = useState(0)
+  const [mediaConfig, setMediaConfig] = useState<MediaConfig | null>(null)
+  const [mediaConfigError, setMediaConfigError] = useState<string | null>(null)
+  const uploads = useRef(new Map<string, AbortController>())
   const connection = useRef<ChatConnection | null>(null)
   const pending = useRef(new Map<string, OutgoingMessage>())
   const ackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
@@ -128,7 +131,7 @@ export function useChat(selectedId: string | undefined) {
   }, [])
 
   const failPending = useCallback(() => {
-    for (const [id, item] of pending.current) if (item.state === 'sending') fail(id, 'Confirmation not received. Retry to check whether this message was saved.')
+    for (const [id, item] of pending.current) if (item.state === 'sending' && item.type === 'TEXT') fail(id, 'Confirmation not received. Retry to check whether this message was saved.')
   }, [fail])
 
   const acceptMessage = useCallback((message: ChatMessage) => {
@@ -199,6 +202,8 @@ export function useChat(selectedId: string | undefined) {
       listController.current?.abort()
       for (const controller of historyControllers.current.values()) controller.abort()
       for (const timer of ackTimers.current.values()) clearTimeout(timer)
+      for (const upload of uploads.current.values()) upload.abort()
+      uploads.current.clear()
       ackTimers.current.clear()
       clearTimeout(refreshTimer.current)
       window.removeEventListener('online', online)
@@ -206,6 +211,15 @@ export function useChat(selectedId: string | undefined) {
       window.removeEventListener('focus', focus)
     }
   }, [communication, userId, failPending, loadConversations, loadHistory])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setMediaConfigError(null)
+    communication<MediaConfig>('/media/config', { signal: controller.signal }).then(config => {
+      if (!controller.signal.aborted) setMediaConfig(config)
+    }).catch(error => { if (!controller.signal.aborted) setMediaConfigError(errorText(error)) })
+    return () => controller.abort()
+  }, [communication, accessRevision])
 
   useEffect(() => {
     if (selectedId && /^[a-f0-9]{24}$/i.test(selectedId)) void loadHistory(selectedId)
@@ -232,9 +246,31 @@ export function useChat(selectedId: string | undefined) {
 
   const send = useCallback((item: OutgoingMessage) => {
     if (connectionState !== 'connected' || access !== 'allowed' || item.conversation_id !== selectedId) return false
+    if (item.type !== 'TEXT' && (!item.file || uploads.current.has(item.client_message_id))) return false
     const sending: OutgoingMessage = { ...item, state: 'sending', error: null }
     pending.current.set(item.client_message_id, sending)
     setOutgoing(current => ({ ...current, [item.client_message_id]: sending }))
+    if (item.type !== 'TEXT') {
+      if (!item.file) return false
+      const controller = new AbortController()
+      uploads.current.set(item.client_message_id, controller)
+      const form = new FormData()
+      form.append('client_message_id', item.client_message_id)
+      if (item.text) form.append('text', item.text)
+      form.append('file', item.file)
+      void communication<unknown>(`/conversations/${item.conversation_id}/messages/media`, { method: 'POST', body: form, signal: controller.signal }).then(result => {
+        if (!mounted.current || controller.signal.aborted) return
+        const frame = parseChatEvent(JSON.stringify(result))
+        if (frame.event !== 'message.ack') throw new Error('The chat service did not confirm this upload.')
+        acceptMessage(frame.message)
+      }).catch(error => {
+        if (!controller.signal.aborted && mounted.current) {
+          fail(item.client_message_id, errorText(error))
+          setAccessRevision(current => current + 1)
+        }
+      }).finally(() => { uploads.current.delete(item.client_message_id) })
+      return true
+    }
     const frame: SendMessage = {
       event: 'message.send', conversation_id: item.conversation_id,
       client_message_id: item.client_message_id, type: 'TEXT', text: item.text,
@@ -243,7 +279,7 @@ export function useChat(selectedId: string | undefined) {
     if (!connection.current?.send(frame)) { fail(item.client_message_id, 'Chat is disconnected. Reconnect and retry.'); return true }
     ackTimers.current.set(item.client_message_id, setTimeout(() => fail(item.client_message_id, 'Confirmation not received. Retry using the same message.'), 12000))
     return true
-  }, [connectionState, access, selectedId, fail])
+  }, [connectionState, access, selectedId, fail, communication, acceptMessage])
 
   const sendText = (text: string) => {
     if (!selectedId || !text.trim() || text.trim().length > 4000) return false
@@ -259,6 +295,14 @@ export function useChat(selectedId: string | undefined) {
     return result
   }, [communication])
 
+  const sendAttachment = (file: File, text: string) => {
+    if (!selectedId || !mediaConfig || text.trim().length > 4000) return false
+    return send({
+      event: 'message.send', conversation_id: selectedId, client_message_id: crypto.randomUUID(),
+      type: attachmentType(file, mediaConfig), file, text: text.trim(), created_at: new Date().toISOString(), state: 'sending', error: null,
+    })
+  }
+
   return {
     conversations, selected, listLoading, listError, hasMore, loadConversations,
     history: selectedId ? histories[selectedId] ?? emptyHistory : emptyHistory,
@@ -266,6 +310,6 @@ export function useChat(selectedId: string | undefined) {
     connectionState, connectionError, access, accessError,
     reconnect: () => { failPending(); connection.current?.reconnect(); setAccessRevision(current => current + 1) },
     refresh: () => { void loadConversations(); if (selectedId) void loadHistory(selectedId); setAccessRevision(current => current + 1) },
-    startConversation, sendText, retry: send,
+    startConversation, sendText, sendAttachment, retry: send, mediaConfig, mediaConfigError,
   }
 }

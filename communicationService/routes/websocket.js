@@ -25,7 +25,7 @@ async function routes(fastify, options) {
     } = options;
     const tickets = new TicketStore({ ttlMs: ticketTtlMs });
     const sockets = new Set();
-    const byUser = new Map();
+    const byUser = fastify.chatEvents.connections;
     const processing = new Set();
     let closing = false;
 
@@ -145,13 +145,7 @@ async function routes(fastify, options) {
                 const response = messageResponse(saved.message);
                 send(socket, { event: 'message.ack', client_message_id: message.client_message_id, duplicate: saved.duplicate, message: response });
                 if (!saved.duplicate) {
-                    for (const participantId of conversation.participantIds) {
-                        for (const recipient of byUser.get(participantId) ?? []) {
-                            if (recipient.socket !== socket && recipient.session?.expiresAt > Date.now()) {
-                                send(recipient.socket, { event: 'message.received', message: response });
-                            }
-                        }
-                    }
+                    fastify.chatEvents.publish(saved.message, conversation.participantIds, socket);
                 }
             } catch (error) {
                 const clientId = typeof frame?.client_message_id === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(frame.client_message_id) ? frame.client_message_id : null;

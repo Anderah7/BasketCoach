@@ -133,7 +133,8 @@ export async function apiRequestBlob(path: string, options: ApiRequestOptions = 
   if (options.token) headers.set('Authorization', `Bearer ${options.token}`)
   let response: Response
   try {
-    response = await fetch(`${API_BASE}${path}`, { headers, signal: options.signal })
+    const base = options.service === 'communication' ? '/api/communication' : API_BASE
+    response = await fetch(`${base}${path}`, { headers, signal: options.signal })
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw error
     throw new ApiError(0, 'Could not connect to BasketCoach. Check that the API Gateway is running.')

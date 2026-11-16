@@ -20,7 +20,7 @@ interface AuthContextValue {
   logout: () => void
   retrySession: () => void
   request: <T>(path: string, options?: Omit<ApiRequestOptions, 'token'>) => Promise<T>
-  requestBlob: (path: string, signal?: AbortSignal) => Promise<Blob>
+  requestBlob: (path: string, signal?: AbortSignal, service?: ApiRequestOptions['service']) => Promise<Blob>
   refreshUser: () => Promise<void>
 }
 
@@ -104,9 +104,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token, logout])
 
-  const requestBlob = useCallback(async (path: string, signal?: AbortSignal): Promise<Blob> => {
+  const requestBlob = useCallback(async (path: string, signal?: AbortSignal, service: ApiRequestOptions['service'] = 'sports'): Promise<Blob> => {
     if (!token) throw new ApiError(401, 'Log in to continue.')
-    try { return await apiRequestBlob(path, { token, signal }) }
+    try { return await apiRequestBlob(path, { token, signal, service }) }
     catch (error) { if (error instanceof ApiError && error.status === 401) logout(); throw error }
   }, [token, logout])
 

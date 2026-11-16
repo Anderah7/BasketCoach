@@ -54,7 +54,7 @@ test('private chat with isolated MongoDB, real HTTP, WebSockets and Gateway', {
     await sports.listen({ host: '127.0.0.1', port: 0 });
     const sportsUrl = `http://127.0.0.1:${sports.server.address().port}`;
     app = buildApp({ logger: false, config: {
-        mongoUri: mongo.uri, mongoDbName: 'basketcoach_chat_isolated_test',
+        mongoUri: mongo.uri, mongoDbName: 'basketcoach_chat_isolated_test', mediaRoot: mongo.mediaRoot,
         sportsServiceUrl: sportsUrl, corsOrigins: ['http://localhost:5173']
     } });
     await app.listen({ host: '127.0.0.1', port: 0 });

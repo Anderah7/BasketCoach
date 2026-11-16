@@ -12,7 +12,7 @@ async function importSource(entry) {
   return import(`data:text/javascript;base64,${Buffer.from(output.code).toString('base64')}`)
 }
 const { ChatConnection } = await importSource('src/services/chat-connection.ts')
-const { mergeMessages, parseChatEvent } = await importSource('src/services/chat.ts')
+const { attachmentType, mergeMessages, messagePreview, parseChatEvent } = await importSource('src/services/chat.ts')
 const nextTurn = () => new Promise(resolve => setImmediate(resolve))
 const ticket = { ticket: 'a'.repeat(43), expires_at: new Date(Date.now() + 30000).toISOString(), ws_path: '/ws' }
 const ready = { event: 'ready', user_id: 1, expires_at: new Date(Date.now() + 60000).toISOString() }
@@ -124,4 +124,24 @@ test('deduplicate retries and merge paginated/live messages with a stable timest
   assert.throws(() => parseChatEvent('{'))
   assert.throws(() => parseChatEvent(JSON.stringify({ event: 'message.received', message: { ...message, sender_id: -1 } })))
   assert.throws(() => parseChatEvent(JSON.stringify({ event: 'message.ack', message, duplicate: true, client_message_id: 'wrong-message-id' })))
+})
+
+test('multimedia notifications accept only supported formats and valid metadata', () => {
+  for (const [type, content_type] of [['IMAGE', 'image/png'], ['VIDEO', 'video/mp4']]) {
+    const mediaMessage = { ...message, type, text: null, media: { content_type, size_bytes: 120 } }
+    const event = parseChatEvent(JSON.stringify({ event: 'message.received', message: mediaMessage }))
+    assert.deepEqual(event.message, mediaMessage)
+    assert.equal(messagePreview(mediaMessage), type === 'IMAGE' ? 'Photo' : 'Video')
+    assert.throws(() => parseChatEvent(JSON.stringify({ event: 'message.received', message: { ...mediaMessage, media: { content_type: 'text/html', size_bytes: 120 } } })))
+    assert.throws(() => parseChatEvent(JSON.stringify({ event: 'message.received', message: { ...mediaMessage, media: { content_type, size_bytes: -1 } } })))
+  }
+})
+
+test('attachment previews enforce configured limits and keep captions optional', () => {
+  const config = { image_max_bytes: 100, video_max_bytes: 200, image_types: ['image/png'], video_types: ['video/webm'] }
+  assert.equal(attachmentType(new File(['image'], 'photo.png', { type: 'image/png' }), config), 'IMAGE')
+  assert.equal(attachmentType(new File(['video'], 'clip.webm', { type: 'video/webm' }), config), 'VIDEO')
+  assert.throws(() => attachmentType(new File(['HTML'], 'pretend.png', { type: 'text/html' }), config))
+  assert.throws(() => attachmentType(new File([], 'empty.png', { type: 'image/png' }), config))
+  assert.throws(() => attachmentType(new File(['x'.repeat(101)], 'big.png', { type: 'image/png' }), config))
 })

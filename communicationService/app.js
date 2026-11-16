@@ -2,6 +2,7 @@ const Fastify = require('fastify');
 const cors = require('@fastify/cors');
 const mongodb = require('@fastify/mongodb');
 const websocket = require('@fastify/websocket');
+const multipart = require('@fastify/multipart');
 const { loadConfig } = require('./config');
 const authentication = require('./plugins/authentication');
 const probeRoutes = require('./routes/pruebas');
@@ -11,6 +12,9 @@ const chatStorage = require('./plugins/chat-storage');
 const conversationRoutes = require('./routes/conversations');
 const websocketRoutes = require('./routes/websocket');
 const { ServiceError } = require('./lib/errors');
+const chatEvents = require('./plugins/chat-events');
+const mediaStorage = require('./plugins/media-storage');
+const mediaRoutes = require('./routes/media');
 
 function buildApp({ config = loadConfig(), logger = true, fetchImpl, chatOptions = {} } = {}) {
     const app = Fastify({
@@ -54,11 +58,15 @@ function buildApp({ config = loadConfig(), logger = true, fetchImpl, chatOptions
     });
     app.register(authentication, { sportsServiceUrl: config.sportsServiceUrl, fetchImpl });
     app.register(chatStorage);
+    app.register(chatEvents);
+    app.register(mediaStorage, config);
+    app.register(multipart, { limits: { files: 1, fields: 2, parts: 3 } });
     app.register(probeRoutes);
     app.register(healthRoutes);
     app.register(accountRoutes);
     app.register(conversationRoutes);
     app.register(websocketRoutes, { allowedOrigins: config.corsOrigins, ...chatOptions });
+    app.register(mediaRoutes);
     app.addHook('onReady', async () => {
         const result = await app.mongo.db.command({ ping: 1 }, { timeoutMS: 5000 });
         if (result.ok !== 1) throw new Error('MongoDB startup ping failed');

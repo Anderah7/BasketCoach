@@ -37,6 +37,7 @@ test('expired tickets are rejected over the actual WebSocket handler', async (t)
     const app = Fastify();
     t.after(() => app.close());
     app.register(websocket);
+    app.register(require('../plugins/chat-events'));
     app.register(authentication, {
         sportsServiceUrl: 'http://sports.test',
         fetchImpl: async () => Response.json({ id: 1, name: 'Private user', role: 'fan', is_active: true })

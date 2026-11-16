@@ -1,4 +1,4 @@
-import type { ChatEvent, ChatMessage, Conversation } from '../types/chat'
+import type { ChatEvent, ChatMessage, Conversation, MediaConfig } from '../types/chat'
 
 const objectId = /^[a-f0-9]{24}$/i
 const clientId = /^[A-Za-z0-9_-]{8,64}$/
@@ -6,11 +6,18 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const date = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value))
 const positiveId = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 
-function isMessage(value: unknown): value is ChatMessage {
-  return record(value) && typeof value.id === 'string' && objectId.test(value.id) &&
+export function isChatMessage(value: unknown): value is ChatMessage {
+  if (!(record(value) && typeof value.id === 'string' && objectId.test(value.id) &&
     typeof value.conversation_id === 'string' && objectId.test(value.conversation_id) && positiveId(value.sender_id) &&
     typeof value.client_message_id === 'string' && clientId.test(value.client_message_id) &&
-    value.type === 'TEXT' && typeof value.text === 'string' && value.media === null && date(value.created_at)
+    date(value.created_at))) return false
+  if (value.type === 'TEXT') return typeof value.text === 'string' && value.media === null
+  if (value.type !== 'IMAGE' && value.type !== 'VIDEO') return false
+  return (value.text === null || typeof value.text === 'string') && record(value.media) &&
+    typeof value.media.size_bytes === 'number' && Number.isSafeInteger(value.media.size_bytes) && value.media.size_bytes > 0 &&
+    typeof value.media.content_type === 'string' && (value.type === 'IMAGE'
+      ? ['image/jpeg', 'image/png', 'image/webp'].includes(value.media.content_type)
+      : ['video/mp4', 'video/webm'].includes(value.media.content_type))
 }
 
 export function parseChatEvent(raw: string): ChatEvent {
@@ -19,8 +26,8 @@ export function parseChatEvent(raw: string): ChatEvent {
     if (frame.event === 'ready' && positiveId(frame.user_id) && date(frame.expires_at)) {
       return { event: 'ready', user_id: frame.user_id, expires_at: frame.expires_at }
     }
-    if (frame.event === 'message.received' && isMessage(frame.message)) return { event: 'message.received', message: frame.message }
-    if (frame.event === 'message.ack' && isMessage(frame.message) && typeof frame.duplicate === 'boolean' && frame.client_message_id === frame.message.client_message_id) {
+    if (frame.event === 'message.received' && isChatMessage(frame.message)) return { event: 'message.received', message: frame.message }
+    if (frame.event === 'message.ack' && isChatMessage(frame.message) && typeof frame.duplicate === 'boolean' && frame.client_message_id === frame.message.client_message_id) {
       return { event: 'message.ack', message: frame.message, duplicate: frame.duplicate, client_message_id: frame.message.client_message_id }
     }
     if (frame.event === 'error' && typeof frame.status === 'number' && Number.isInteger(frame.status) && frame.status >= 400 && frame.status <= 599 &&
@@ -51,4 +58,17 @@ export function chatSocketUrl(): string {
   const url = new URL('/api/communication/ws', window.location.origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.href
+}
+
+export function messagePreview(message: ChatMessage): string {
+  return message.type === 'TEXT' ? message.text : `${message.type === 'IMAGE' ? 'Photo' : 'Video'}${message.text ? ` · ${message.text}` : ''}`
+}
+
+export function attachmentType(file: File, config: MediaConfig): 'IMAGE' | 'VIDEO' {
+  const type = config.image_types.includes(file.type) ? 'IMAGE' : config.video_types.includes(file.type) ? 'VIDEO' : null
+  if (!type) throw new Error('Choose a JPEG, PNG, WebP image or an MP4 or WebM video.')
+  const maximum = type === 'IMAGE' ? config.image_max_bytes : config.video_max_bytes
+  if (!file.size) throw new Error('Empty files are not allowed.')
+  if (file.size > maximum) throw new Error(`This ${type.toLowerCase()} exceeds the ${Number((maximum / 1024 / 1024).toFixed(2))} MB limit.`)
+  return type
 }

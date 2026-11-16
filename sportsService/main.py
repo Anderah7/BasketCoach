@@ -8,8 +8,10 @@ from routers.trainings import router as trainings_router
 from routers.ai import router as ai_router
 from routers.media import router as media_router
 from routers.friends import router as friends_router
+from notification_outbox import notification_lifespan
 
 app = FastAPI(
+    lifespan=notification_lifespan,
     title="BasketCoach - Sports Service",
     swagger_ui_parameters={"persistAuthorization": True},
 )

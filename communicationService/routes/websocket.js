@@ -97,6 +97,12 @@ async function routes(fastify, options) {
             clearTimeout(authTimer); clearTimeout(expiryTimer);
             sockets.delete(connection);
             if (connection.session) {
+                if (!closing && connection.activeConversationId) {
+                    const pending = fastify.notifications.markConversation(connection.session.userId, connection.activeConversationId)
+                        .catch(() => { fastify.log.warn('Notification view checkpoint deferred'); })
+                        .finally(() => { processing.delete(pending); });
+                    processing.add(pending);
+                }
                 const group = byUser.get(connection.session.userId);
                 group?.delete(connection);
                 if (group?.size === 0) byUser.delete(connection.session.userId);
@@ -134,6 +140,23 @@ async function routes(fastify, options) {
                 }
                 const session = connection.session;
                 if (session.expiresAt <= Date.now()) throw new ServiceError(401, 'UNAUTHORIZED', 'Chat session expired');
+                if (frame?.event === 'conversation.view') {
+                    if (!exactKeys(frame, ['event', 'conversation_id']) || !(frame.conversation_id === null || (typeof frame.conversation_id === 'string' && /^[a-f0-9]{24}$/i.test(frame.conversation_id)))) {
+                        throw new ServiceError(400, 'VALIDATION_ERROR', 'Invalid conversation view');
+                    }
+                    await fastify.verifyUser(session.authorization);
+                    if (frame.conversation_id !== null) {
+                        try { await fastify.chatStore.requireConversation(frame.conversation_id, session.userId); }
+                        catch (error) { connection.activeConversationId = null; errorFrame(socket, error); return; }
+                    }
+                    const previousView = connection.activeConversationId;
+                    if (previousView && previousView !== frame.conversation_id) await fastify.notifications.markConversation(session.userId, previousView);
+                    connection.activeConversationId = frame.conversation_id;
+                    if (frame.conversation_id !== null) await fastify.chatRead.markRead(session.userId, frame.conversation_id);
+                    if (frame.conversation_id !== null) await fastify.notifications.markConversation(session.userId, frame.conversation_id);
+                    send(socket, { event: 'conversation.viewed', conversation_id: frame.conversation_id });
+                    return;
+                }
                 const message = validateSend(frame);
                 const user = await fastify.verifyUser(session.authorization);
                 if (user.id !== session.userId) throw new ServiceError(401, 'UNAUTHORIZED', 'Invalid session identity');
@@ -147,6 +170,7 @@ async function routes(fastify, options) {
                 if (!saved.duplicate) {
                     fastify.chatEvents.publish(saved.message, conversation.participantIds, socket);
                 }
+                await fastify.notifications.messageSaved(saved.message);
             } catch (error) {
                 const clientId = typeof frame?.client_message_id === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(frame.client_message_id) ? frame.client_message_id : null;
                 errorFrame(socket, error, clientId);

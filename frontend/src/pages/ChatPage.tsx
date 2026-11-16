@@ -178,10 +178,10 @@ export function ChatPage() {
           {chat.listError && <Notice kind="error">{chat.listError}<button className="wb-button wb-button-link" type="button" onClick={() => void chat.loadConversations()}>Try again</button></Notice>}
           {filtered.map(item => {
             const name = conversationLabel(item, user!.id)
-            return <Link key={item.id} to={`/chat/${item.id}`} className={`chat-conversation${item.id === conversationId ? ' selected' : ''}`} aria-current={item.id === conversationId ? 'page' : undefined}>
+            return <Link key={item.id} to={`/chat/${item.id}`} className={`chat-conversation${item.id === conversationId ? ' selected' : ''}${item.unread_count > 0 ? ' chat-conversation-unread' : ''}`} aria-current={item.id === conversationId ? 'page' : undefined}>
               <Avatar id={item.other_participant?.avatar_media_id ?? null} name={item.other_participant?.username ?? 'User'} className="chat-avatar" />
               <span className="chat-conversation-copy"><span className="chat-conversation-top"><strong>{name}</strong>{item.last_message && <time dateTime={item.last_message.created_at}>{dayKey(item.last_message.created_at) === dayKey(new Date().toISOString()) ? clock(item.last_message.created_at) : new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(item.last_message.created_at))}</time>}</span>
-                <span className="chat-preview">{item.last_message ? `${item.last_message.sender_id === user!.id ? 'You: ' : ''}${messagePreview(item.last_message)}` : 'Start the conversation'}</span>
+                <span className="chat-conversation-bottom"><span className="chat-preview">{item.last_message ? `${item.last_message.sender_id === user!.id ? 'You: ' : ''}${messagePreview(item.last_message)}` : 'Start the conversation'}</span>{item.unread_count > 0 && <span className="chat-unread" aria-label={`${item.unread_count} unread ${item.unread_count === 1 ? 'message' : 'messages'}`} title={`${item.unread_count} unread messages`}>{item.unread_count > 99 ? '99+' : item.unread_count}</span>}</span>
               </span>
             </Link>
           })}

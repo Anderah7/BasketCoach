@@ -35,6 +35,9 @@ class IsolatedSocialCase(unittest.TestCase):
         return engine
 
     def setUp(self):
+        dispatcher = patch("routers.friends.dispatch_pending")
+        dispatcher.start()
+        self.addCleanup(dispatcher.stop)
         self.engine = self.make_engine()
         Base.metadata.create_all(self.engine)
         with Session(self.engine) as db:

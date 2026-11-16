@@ -27,7 +27,7 @@ npm start
 
 If PowerShell blocks `npm.ps1`, use `npm.cmd start` (and `npm.cmd test` for tests) without changing Windows execution policies.
 
-Startup connects to MongoDB, initializes the `conversations` and `messages` collections and their indexes, and performs `ping` before opening the listener. It does not insert sample data or recreate the database. Existing records are preserved; conflicting existing records/indexes cause startup to fail rather than being deleted. Stop with Ctrl+C to close sockets and MongoDB connections.
+Startup connects to MongoDB, initializes `conversations`, `messages`, `notifications` and their indexes, and performs `ping` before opening the listener. It does not insert sample data or recreate the database. Existing records are preserved; conflicting existing records/indexes cause startup to fail rather than being deleted. Stop with Ctrl+C to close sockets and MongoDB connections.
 
 ## Manual checks
 
@@ -210,7 +210,11 @@ Do not set multipart Content-Type yourself: the browser supplies the boundary. T
 - Conversation summaries derive their last message from persisted messages, so no replica-set transaction is required on local standalone MongoDB. Each message is inserted atomically before acknowledgement. Conversation creation is an atomic upsert with a unique-index conflict fallback.
 - Friendships live in PostgreSQL and messages in MongoDB: a friendship deletion concurrent with an already authorized, in-flight send cannot be atomic across both services. Later sends always recheck friendship. There is no friendship cache.
 - Tickets and connected sockets belong to one process. Multiple instances require shared single-use ticket storage and a pub/sub channel for broadcasts (plus appropriate routing); process restarts invalidate tickets and disconnect sockets but preserve MongoDB history.
-- Real-time broadcasts are best effort, not delivery/read receipts. Offline recipients and interrupted connections recover through history. There is no automatic retry or notification system. Conversation sorting currently aggregates the user's conversations; revisit pagination/index strategy at larger scale.
+- Real-time broadcasts are best effort, not delivery/read receipts. Offline recipients recover through message/notification history. Pending notification writes are retried durably; conversation sorting currently aggregates the user's conversations, so revisit pagination/index strategy at larger scale.
+
+## Notifications
+
+The same authenticated socket now carries friendship and NEW_MESSAGE notifications. Protected routes `/notifications`, `/notifications/unread-count`, `/notifications/{id}/read` and `/notifications/read-all` expose only the current user's history/read state. The internal friendship event receiver requires the separate `NOTIFICATIONS_INTERNAL_SECRET` configured in both backend `.env` files and is blocked by the Gateway. See [notification configuration, migration, events, retries and two-user checks](../docs/NOTIFICATIONS.md).
 
 ## Automated checks
 

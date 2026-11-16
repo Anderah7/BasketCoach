@@ -1,4 +1,4 @@
-import type { ChatEvent, ChatTicket, ConnectionState, SendMessage } from '../types/chat'
+import type { ChatEvent, ChatTicket, ClientChatEvent, ConnectionState } from '../types/chat'
 import { parseChatEvent } from './chat'
 
 interface ConnectionOptions {
@@ -45,7 +45,7 @@ export class ChatConnection {
     this.start()
   }
 
-  send(message: SendMessage): boolean {
+  send(message: ClientChatEvent): boolean {
     if (!this.ready || !this.socket || this.socket.readyState !== 1) return false
     try { this.socket.send(JSON.stringify(message)); return true } catch { return false }
   }

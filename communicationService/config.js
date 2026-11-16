@@ -41,7 +41,8 @@ function loadConfig() {
         mongoUri, mongoDbName, sportsServiceUrl, port, corsOrigins,
         mediaRoot: resolve(__dirname, process.env.MEDIA_ROOT || 'uploads'),
         imageMaxBytes: mediaLimit('MAX_IMAGE_SIZE_MB', 10),
-        videoMaxBytes: mediaLimit('MAX_VIDEO_SIZE_MB', 50)
+        videoMaxBytes: mediaLimit('MAX_VIDEO_SIZE_MB', 50),
+        notificationSecret: (process.env.NOTIFICATIONS_INTERNAL_SECRET || '').trim()
     };
 }
 

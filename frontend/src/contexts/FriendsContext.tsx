@@ -5,6 +5,7 @@ import { ApiError } from '../services/api'
 import { errorText } from '../services/format'
 import type { Friend, FriendRequest, FriendRequestsResponse, FriendshipAction, Relationship } from '../types/social'
 import { useAuth } from './AuthContext'
+import { useRealtime } from './RealtimeContext'
 
 interface FriendsData {
   friends: Friend[]
@@ -34,6 +35,7 @@ const FriendsContext = createContext<FriendsContextValue | null>(null)
 
 export function FriendsProvider({ children }: { children: ReactNode }) {
   const { request, user } = useAuth()
+  const { subscribe } = useRealtime()
   const { pathname } = useLocation()
   const [data, setData] = useState<FriendsData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -73,6 +75,17 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
     void refresh()
     return () => controller.current?.abort()
   }, [pathname, refresh])
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const unsubscribe = subscribe(event => {
+      if (event.event === 'ready' || (event.event === 'notification.created' && event.notification.type !== 'NEW_MESSAGE')) {
+        clearTimeout(timer)
+        timer = setTimeout(() => { void refresh() }, 100)
+      }
+    })
+    return () => { clearTimeout(timer); unsubscribe() }
+  }, [subscribe, refresh])
 
   function relationship(userId: number): Relationship {
     if (userId === user?.id) return { status: 'SELF', requestId: null }

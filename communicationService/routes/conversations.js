@@ -26,6 +26,7 @@ async function routes(fastify) {
         // Existing conversations must return the same current last-message data as the list.
         const latest = await fastify.chatStore.history(conversation._id.toHexString(), 1);
         const response = conversationResponse(conversation, other);
+        response.unread_count = await fastify.chatRead.count(conversation, request.user.id);
         response.last_message = latest.items[0] ?? null;
         return reply.code(created ? 201 : 200).header('Cache-Control', 'no-store').send(response);
     });

@@ -15,12 +15,15 @@ const { ServiceError } = require('./lib/errors');
 const chatEvents = require('./plugins/chat-events');
 const mediaStorage = require('./plugins/media-storage');
 const mediaRoutes = require('./routes/media');
+const notifications = require('./plugins/notifications');
+const notificationRoutes = require('./routes/notifications');
+const chatRead = require('./plugins/chat-read');
 
 function buildApp({ config = loadConfig(), logger = true, fetchImpl, chatOptions = {} } = {}) {
     const app = Fastify({
         ajv: { customOptions: { removeAdditional: false } },
         logger: logger ? {
-            redact: ['req.headers.authorization'],
+            redact: ['req.headers.authorization', 'req.headers["x-notification-secret"]'],
             serializers: { req: request => ({ method: request.method, url: request.url.split('?')[0], host: request.host }) }
         } : false
     });
@@ -59,6 +62,8 @@ function buildApp({ config = loadConfig(), logger = true, fetchImpl, chatOptions
     app.register(authentication, { sportsServiceUrl: config.sportsServiceUrl, fetchImpl });
     app.register(chatStorage);
     app.register(chatEvents);
+    app.register(chatRead);
+    app.register(notifications, { retryMs: config.notificationRetryMs });
     app.register(mediaStorage, config);
     app.register(multipart, { limits: { files: 1, fields: 2, parts: 3 } });
     app.register(probeRoutes);
@@ -67,6 +72,7 @@ function buildApp({ config = loadConfig(), logger = true, fetchImpl, chatOptions
     app.register(conversationRoutes);
     app.register(websocketRoutes, { allowedOrigins: config.corsOrigins, ...chatOptions });
     app.register(mediaRoutes);
+    app.register(notificationRoutes, { secret: config.notificationSecret });
     app.addHook('onReady', async () => {
         const result = await app.mongo.db.command({ ping: 1 }, { timeoutMS: 5000 });
         if (result.ok !== 1) throw new Error('MongoDB startup ping failed');

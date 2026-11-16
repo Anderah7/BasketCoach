@@ -58,6 +58,7 @@ async function routes(fastify) {
             if (committed) await store.finalize(key);
             else await store.cleanup(key); // A concurrent retry won: discard only our new copy.
             if (!saved.duplicate) fastify.chatEvents.publish(saved.message, conversation.participantIds);
+            await fastify.notifications.messageSaved(saved.message);
             return reply.code(saved.duplicate ? 200 : 201).header('Cache-Control', 'no-store').send({
                 event: 'message.ack', client_message_id: fields.client_message_id,
                 duplicate: saved.duplicate, message: messageResponse(saved.message)

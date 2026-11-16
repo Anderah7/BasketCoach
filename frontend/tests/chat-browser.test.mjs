@@ -101,7 +101,8 @@ test('two browser users chat through Vite and Gateway, retry failures and retain
   await sports.listen({ host: '127.0.0.1', port: 0 })
   const sportsUrl = `http://127.0.0.1:${sports.server.address().port}`
   const origins = []
-  app = buildApp({ logger: false, config: { mongoUri: mongo.uri, mediaRoot: mongo.mediaRoot, mongoDbName: 'basketcoach_browser_isolated_test', sportsServiceUrl: sportsUrl, corsOrigins: origins } })
+  const notificationSecret = 'isolated-browser-notification-secret-not-for-production'
+  app = buildApp({ logger: false, config: { mongoUri: mongo.uri, mediaRoot: mongo.mediaRoot, mongoDbName: 'basketcoach_browser_isolated_test', sportsServiceUrl: sportsUrl, corsOrigins: origins, notificationSecret } })
   await app.listen({ host: '127.0.0.1', port: 0 })
   const previousSports = process.env.SPORTS_SERVICE_URL, previousCommunication = process.env.COMMUNICATION_SERVICE_URL
   process.env.SPORTS_SERVICE_URL = sportsUrl
@@ -243,13 +244,60 @@ test('two browser users chat through Vite and Gateway, retry failures and retain
   }
   assert.equal(await app.mongo.db.collection('messages').countDocuments({ type: 'VIDEO' }), 1)
 
+  // The layout keeps the same authenticated socket outside the Messages screen.
+  const originalSocket = [...app.chatEvents.connections.get(1)][0].socket
+  await evaluate(a, `document.querySelector('a.sidebar-link[href="/friends"]').click()`)
+  await until(() => evaluate(a, `location.pathname === '/friends'`), 'navigate outside chat')
+  assert.equal([...app.chatEvents.connections.get(1)][0].socket, originalSocket)
+  for (const [requestId, type] of [[900, 'FRIEND_REQUEST'], [901, 'FRIEND_ACCEPTED']]) {
+    const response = await fetch(`http://127.0.0.1:${app.server.address().port}/internal/notifications`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Notification-Secret': notificationSecret },
+      body: JSON.stringify({ event_id: `friend-request:${requestId}:${type}`, type, actor_id: 2, recipient_id: 1, friend_request_id: requestId, occurred_at: new Date().toISOString() })
+    })
+    assert.equal(response.status, 201); await response.body.cancel()
+  }
+  await until(() => evaluate(a, `document.querySelector('.notification-badge')?.textContent === '2'`), 'live friendship notification badge')
+  await evaluate(a, `document.querySelector('.notification-trigger').click()`)
+  await until(() => evaluate(a, `Array.from(document.querySelectorAll('.notification-open strong')).some(node => node.textContent.includes('@player_2 accepted'))`), 'public actor data in notification menu')
+  await evaluate(a, `document.querySelector('.notification-read').click()`)
+  await until(() => evaluate(a, `document.querySelector('.notification-badge')?.textContent === '1'`), 'individual read count')
+  await until(() => evaluate(a, `document.querySelector('.notification-popover header button')?.disabled === false`), 'individual read action finished')
+  await evaluate(a, `document.querySelector('.notification-popover header button').click()`)
+  await until(() => evaluate(a, `document.querySelector('.notification-badge') === null`), 'mark all notifications read')
+  await until(() => evaluate(a, `document.querySelector('.notification-open')?.disabled === false`), 'mark all action finished')
+  await evaluate(a, `Array.from(document.querySelectorAll('.notification-open')).find(node => node.textContent.includes('sent you a friend request')).click()`)
+  await until(() => evaluate(a, `location.pathname === '/friends/requests'`), 'friend request notification navigation')
+  await send(b, 'Notification while outside chat')
+  await until(() => evaluate(a, `document.querySelector('.notification-badge')?.textContent === '1'`), 'new message badge outside chat')
+  await evaluate(a, `document.querySelector('a.sidebar-link[href="/chat"]').click()`)
+  await until(() => evaluate(a, `document.querySelector('.chat-conversation[href="/chat/${id}"] .chat-unread')?.textContent === '1'`), 'chat has its own unread badge')
+  await send(b, 'Second unread message')
+  await until(() => evaluate(a, `document.querySelector('.chat-conversation[href="/chat/${id}"] .chat-unread')?.textContent === '2'`), 'chat unread count updates live')
+  await evaluate(a, `document.querySelector('.notification-trigger').click()`)
+  await until(() => evaluate(a, `Array.from(document.querySelectorAll('.notification-open')).some(node => node.textContent.includes('sent you a message'))`), 'message notification available')
+  await evaluate(a, `document.querySelector('.notification-popover header button').click()`)
+  await until(() => evaluate(a, `document.querySelector('.notification-badge') === null`), 'bell can be read separately')
+  await until(() => evaluate(a, `document.querySelector('.notification-open')?.disabled === false`), 'bell read action finished')
+  assert.equal(await evaluate(a, `document.querySelector('.chat-conversation[href="/chat/${id}"] .chat-unread')?.textContent`), '2')
+  await evaluate(a, `Array.from(document.querySelectorAll('.notification-open')).find(node => node.textContent.includes('sent you a message')).click()`)
+  await until(() => evaluate(a, `location.pathname === '/chat/${id}' && document.querySelector('.chat-composer textarea')?.disabled === false`), 'message notification opens its conversation')
+  await until(() => countText(a, 'Notification while outside chat'), 'notification opens saved message history')
+  await until(() => evaluate(a, `document.querySelector('.chat-conversation[href="/chat/${id}"] .chat-unread') === null`), 'opening the conversation clears its unread messages')
+  assert.equal([...app.chatEvents.connections.get(1)][0].socket, originalSocket)
+
   friends = false
   await evaluate(a, `document.querySelector('[aria-label="Refresh conversations and messages"]').click()`)
   await until(() => evaluate(a, `document.querySelector('.chat-composer textarea')?.disabled === true && document.querySelector('.chat-thread-notice')?.textContent.includes('current friends')`), 'unfriending blocks composer')
-  assert.equal(await countText(a, 'Hello from the player'), 1)
+  await until(() => evaluate(a, `document.querySelector('.chat-older')?.disabled === false`), 'older history is available after returning to chat')
+  await evaluate(a, `document.querySelector('.chat-older').click()`)
+  await until(() => countText(a, 'Hello from the player'), 'old history survives leaving chat and removing friendship')
   await cdp.call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }, a)
   assert.equal(await evaluate(a, `getComputedStyle(document.querySelector('.chat-sidebar')).display`), 'none')
   assert.equal(await evaluate(a, `document.documentElement.scrollWidth <= window.innerWidth`), true)
+  await evaluate(a, `document.querySelector('.notification-trigger').click()`)
+  await until(() => evaluate(a, `document.querySelector('.notification-popover') !== null`), 'mobile notification menu')
+  assert.equal(await evaluate(a, `(() => { const bounds = document.querySelector('.notification-popover').getBoundingClientRect(); return bounds.left >= 0 && bounds.right <= innerWidth; })()`), true)
+  await evaluate(a, `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
   await evaluate(a, `document.querySelector('.chat-back').click()`)
   await until(() => evaluate(a, `location.pathname === '/chat' && getComputedStyle(document.querySelector('.chat-sidebar')).display !== 'none'`), 'mobile back navigation')
   await evaluate(a, `document.querySelector('.sidebar-logout').click()`)

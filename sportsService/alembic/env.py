@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from models import Base
+import notification_outbox  # Register the outbox table in shared Alembic metadata.
 from database import engine, DATABASE_URL
 
 # this is the Alembic Config object, which provides

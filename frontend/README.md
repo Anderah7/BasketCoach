@@ -34,7 +34,7 @@ Select a user card to open the public profile in the central dialog. It shows on
 
 Coaches can also send friend requests from **My teams → team → player profile**. The profile reuses the friendship controls and shows existing friends and pending incoming/outgoing requests.
 
-`FriendsContext` shares friend/request state between these pages and refreshes after actions and when navigating between them. The **Refresh** button retrieves external changes without real-time connections. A 409 conflict also reloads state, so crossed or already answered requests show the correct available action. API calls and protected avatar downloads reuse `AuthContext` and pass through the Gateway.
+`FriendsContext` shares friend/request state between these pages, refreshes after actions/navigation, and listens to friendship notifications/reconnections on the shared socket. The **Refresh** button is also available. A 409 conflict reloads state, so crossed or already answered requests show the correct available action. API calls and protected avatar downloads reuse `AuthContext` and pass through the Gateway.
 
 For manual verification, use two existing accounts in separate browser profiles, set their usernames, search for one from the other, send a request, then refresh the recipient's requests page. Accept/reject it and check the friends list, public profile state and removal flow. No account or database changes are performed by the build checks.
 
@@ -42,11 +42,13 @@ For manual verification, use two existing accounts in separate browser profiles,
 
 All roles have a **Messages** entry. Open `/chat` to browse conversations and `/chat/{conversationId}` to read a session. Use **New conversation** to select a current friend, or **Message** from the existing friendship controls (friends list, public profiles and team-player profiles). The backend creates or recovers the same private conversation.
 
-The chat follows the dashboard's navy, orange and white styling. On narrow screens, the inbox and conversation are separate views with a back button. Avatars reuse authenticated sportsService media downloads. Only public identity fields are displayed. There are no online-presence indicators, read receipts or notifications.
+The chat follows the dashboard's navy, orange and white styling. On narrow screens, the inbox and conversation are separate views with a back button. Avatars reuse authenticated sportsService media downloads. Only public identity fields are displayed. There are no public online-presence indicators or message read receipts.
+
+Each conversation has a live unread-message badge (displayed as `99+` above 99). Counts include received text, image and video messages and are stored independently of bell-notification read status. Opening a visibly focused conversation clears its unread count across the user's tabs. Counts survive reloads; marking the bell read leaves unread chats unchanged. This is a private per-user read cursor, not a sender-facing delivery/read receipt.
 
 All communication requests use `/api/communication` through the Gateway. The existing `AuthContext.request` accepts `service: 'communication'`, keeping JWT access and HTTP 401 handling centralized. The WebSocket uses the page's origin at `/api/communication/ws`; Vite forwards upgrades with `ws: true`. No backend URLs or secrets are placed in the frontend.
 
-The frontend first obtains a short-lived ticket via authenticated HTTP, sends it in the first WebSocket frame and waits for `ready`. Each reconnect obtains a new ticket. The JWT is never placed in the socket URL or exposed outside the existing authentication context. Sockets, requests and timers are cleaned up when leaving Messages or logging out. After changing `vite.config.ts`, restart the Vite development server.
+`RealtimeProvider` first obtains a short-lived ticket via authenticated HTTP, sends it in the first WebSocket frame and waits for `ready`. The single layout connection remains active outside Messages, shared with notifications; each reconnect obtains a new ticket. The JWT is never placed in the socket URL or exposed outside authentication. Chat requests/uploads/timers are cleaned up when leaving Messages, and the shared socket closes on logout. After changing `vite.config.ts`, restart the Vite development server.
 
 Messages show **Sending**, **Uploading**, **Saved**, or **Not confirmed**. Saved means the server confirmed persistence; it does not mean the recipient has read the message. Failed sends have **Retry**, preserving the original client message ID, file and caption. Lost acknowledgements can also be reconciled with history. History is paginated using **Load earlier messages**; refreshing after an outage fetches intervening pages as necessary. Conversation search filters loaded conversations; use **Load more conversations** for older ones. Drafts, selected files and unconfirmed messages are kept only in memory while the Messages screen is mounted.
 
@@ -69,6 +71,12 @@ npm.cmd run test:browser
 ```
 
 The browser check launches a temporary MongoDB and upload directory, a mocked sports HTTP service, real communication/Gateway routes, Vite and an isolated headless Chromium profile. It covers both users, live replies, failed-send retry, reload, offline recovery across multiple history pages, image previews/authenticated loading, a synthetic generated WebM in the native player, friendship removal, mobile layout and logout. It is explicitly skipped unless both binary paths are set. No frontend test dependencies were added; the existing Vite compiler and Node test runner are used.
+
+## Notifications
+
+All roles have a bell in the existing top bar. `NotificationsContext` reloads recent items and unread count on login/reconnection and synchronizes changes from `notification.created` / `notifications.read` on the shared socket. The menu supports pagination, individual read actions, mark-all and navigation to friendship requests/friends or the message conversation. Focus/visibility changes send validated conversation presence, suppressing unread activity for the visibly open conversation without changing message read state.
+
+The browser check also verifies live bell updates, individual/all read actions, notification navigation, mobile menu bounds and preservation of the same socket while moving between chat and Friends. Backend setup now requires the additive sportsService outbox migration and the configured backend-only secret; see [notification deployment and manual checks](../docs/NOTIFICATIONS.md). No notification secret is present in the frontend.
 
 ## Checks
 

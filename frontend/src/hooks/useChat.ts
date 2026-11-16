@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { ChatConnection } from '../services/chat-connection'
-import { attachmentType, chatSocketUrl, mergeMessages, parseChatEvent, sortConversations } from '../services/chat'
+import { useRealtime } from '../contexts/RealtimeContext'
+import { attachmentType, mergeMessages, parseChatEvent, sortConversations } from '../services/chat'
 import { errorText } from '../services/format'
 import type { ApiRequestOptions } from '../services/api'
-import type { ChatEvent, ChatMessage, ChatTicket, ConnectionState, Conversation, ConversationPage, MediaConfig, MessagePage, OutgoingMessage, SendMessage } from '../types/chat'
+import type { ChatEvent, ChatMessage, Conversation, ConversationPage, MediaConfig, MessagePage, OutgoingMessage, SendMessage } from '../types/chat'
 import type { PublicProfile } from '../types/social'
 
 interface History {
@@ -20,6 +20,7 @@ const emptyHistory: History = { items: [], latestLoadedId: null, cursor: null, l
 
 export function useChat(selectedId: string | undefined) {
   const { request, user } = useAuth()
+  const { state: connectionState, error: realtimeError, send: sendFrame, subscribe, reconnect: reconnectSocket } = useRealtime()
   const userId = user!.id
   const communication = useCallback(<T,>(path: string, options: Omit<ApiRequestOptions, 'token'> = {}) =>
     request<T>(path, { ...options, service: 'communication' }), [request])
@@ -32,15 +33,13 @@ export function useChat(selectedId: string | undefined) {
   const [histories, setHistories] = useState<Record<string, History>>({})
   const historiesRef = useRef(histories)
   const [outgoing, setOutgoing] = useState<Record<string, OutgoingMessage>>({})
-  const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
-  const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [eventError, setEventError] = useState<string | null>(null)
   const [access, setAccess] = useState<'checking' | 'allowed' | 'blocked' | 'unavailable'>('checking')
   const [accessError, setAccessError] = useState<string | null>(null)
   const [accessRevision, setAccessRevision] = useState(0)
   const [mediaConfig, setMediaConfig] = useState<MediaConfig | null>(null)
   const [mediaConfigError, setMediaConfigError] = useState<string | null>(null)
   const uploads = useRef(new Map<string, AbortController>())
-  const connection = useRef<ChatConnection | null>(null)
   const pending = useRef(new Map<string, OutgoingMessage>())
   const ackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const historyControllers = useRef(new Map<string, AbortController>())
@@ -49,6 +48,8 @@ export function useChat(selectedId: string | undefined) {
   const listRef = useRef(conversations)
   const selectedRef = useRef(selectedId)
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const unreadSequence = useRef(0)
+  const liveUnread = useRef(new Map<string, { sequence: number; count: number }>())
 
   const loadConversations = useCallback(async (more = false) => {
     if (more && listController.current && !listController.current.signal.aborted) return
@@ -56,6 +57,7 @@ export function useChat(selectedId: string | undefined) {
     const controller = new AbortController()
     listController.current = controller
     const start = more ? offset.current : 0
+    const snapshotSequence = unreadSequence.current
     setListLoading(true); setListError(null)
     try {
       const result = await communication<ConversationPage>(`/conversations?limit=100&offset=${start}`, { signal: controller.signal })
@@ -65,6 +67,8 @@ export function useChat(selectedId: string | undefined) {
       setConversations(current => {
         const byId = new Map((more ? current : []).map(item => [item.id, item]))
         for (const item of result.items) {
+          const unread = liveUnread.current.get(item.id)
+          if (unread && unread.sequence > snapshotSequence) item.unread_count = unread.count
           // Keep newer live updates that arrived while this snapshot was loading.
           const live = current.find(existing => existing.id === item.id)?.last_message
           byId.set(item.id, live && live.created_at > (item.last_message?.created_at ?? '') ? { ...item, last_message: live } : item)
@@ -159,46 +163,38 @@ export function useChat(selectedId: string | undefined) {
   useEffect(() => {
     events.current = event => {
       if (event.event === 'ready') {
+        setEventError(null)
         void loadConversations()
         if (selectedRef.current) void loadHistory(selectedRef.current)
         setAccessRevision(current => current + 1)
       } else if (event.event === 'message.received' || event.event === 'message.ack') {
         acceptMessage(event.message)
+      } else if (event.event === 'conversation.unread') {
+        liveUnread.current.set(event.conversation_id, { sequence: ++unreadSequence.current, count: event.unread_count })
+        setConversations(current => current.map(item => item.id === event.conversation_id ? { ...item, unread_count: event.unread_count } : item))
       } else if (event.event === 'error') {
         if (event.client_message_id) {
           const item = pending.current.get(event.client_message_id)
           if (item?.conversation_id === selectedRef.current && ['NOT_FRIENDS', 'USER_NOT_FOUND'].includes(event.code)) setAccess('blocked')
           fail(event.client_message_id, event.message)
-        } else setConnectionError(event.message)
+        } else setEventError(event.message)
       }
     }
   }, [acceptMessage, fail, loadConversations, loadHistory])
 
   useEffect(() => {
     mounted.current = true
-    const live = new ChatConnection({
-      url: chatSocketUrl(), userId,
-      getTicket: signal => communication<ChatTicket>('/ws/tickets', { method: 'POST', signal }),
-      onEvent: event => { if (mounted.current) events.current(event) },
-      onState: (state, error) => { if (mounted.current) { setConnectionState(state); setConnectionError(error) } },
-      onDisconnect: failPending,
-    })
-    connection.current = live
-    const online = () => { live.reconnect(); void loadConversations(); setAccessRevision(current => current + 1) }
-    const offline = () => { live.stop(); failPending(); setConnectionState('offline'); setConnectionError('You are offline. Chat will reconnect when your connection returns.') }
+    const unsubscribe = subscribe(event => { if (mounted.current) events.current(event) })
     const focus = () => {
       void loadConversations()
       if (selectedRef.current) void loadHistory(selectedRef.current)
       setAccessRevision(current => current + 1)
     }
-    window.addEventListener('online', online)
-    window.addEventListener('offline', offline)
     window.addEventListener('focus', focus)
     void loadConversations()
-    if (navigator.onLine) live.start(); else offline()
     return () => {
       mounted.current = false
-      live.stop(); connection.current = null
+      unsubscribe()
       listController.current?.abort()
       for (const controller of historyControllers.current.values()) controller.abort()
       for (const timer of ackTimers.current.values()) clearTimeout(timer)
@@ -206,11 +202,11 @@ export function useChat(selectedId: string | undefined) {
       uploads.current.clear()
       ackTimers.current.clear()
       clearTimeout(refreshTimer.current)
-      window.removeEventListener('online', online)
-      window.removeEventListener('offline', offline)
       window.removeEventListener('focus', focus)
     }
-  }, [communication, userId, failPending, loadConversations, loadHistory])
+  }, [subscribe, loadConversations, loadHistory])
+
+  useEffect(() => { if (connectionState !== 'connected') failPending() }, [connectionState, failPending])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -276,10 +272,10 @@ export function useChat(selectedId: string | undefined) {
       client_message_id: item.client_message_id, type: 'TEXT', text: item.text,
     }
     clearTimeout(ackTimers.current.get(item.client_message_id))
-    if (!connection.current?.send(frame)) { fail(item.client_message_id, 'Chat is disconnected. Reconnect and retry.'); return true }
+    if (!sendFrame(frame)) { fail(item.client_message_id, 'Chat is disconnected. Reconnect and retry.'); return true }
     ackTimers.current.set(item.client_message_id, setTimeout(() => fail(item.client_message_id, 'Confirmation not received. Retry using the same message.'), 12000))
     return true
-  }, [connectionState, access, selectedId, fail, communication, acceptMessage])
+  }, [connectionState, access, selectedId, fail, communication, acceptMessage, sendFrame])
 
   const sendText = (text: string) => {
     if (!selectedId || !text.trim() || text.trim().length > 4000) return false
@@ -307,8 +303,8 @@ export function useChat(selectedId: string | undefined) {
     conversations, selected, listLoading, listError, hasMore, loadConversations,
     history: selectedId ? histories[selectedId] ?? emptyHistory : emptyHistory,
     loadHistory, outgoing: Object.values(outgoing).filter(item => item.conversation_id === selectedId),
-    connectionState, connectionError, access, accessError,
-    reconnect: () => { failPending(); connection.current?.reconnect(); setAccessRevision(current => current + 1) },
+    connectionState, connectionError: eventError ?? realtimeError, access, accessError,
+    reconnect: () => { failPending(); reconnectSocket(); setAccessRevision(current => current + 1) },
     refresh: () => { void loadConversations(); if (selectedId) void loadHistory(selectedId); setAccessRevision(current => current + 1) },
     startConversation, sendText, sendAttachment, retry: send, mediaConfig, mediaConfigError,
   }

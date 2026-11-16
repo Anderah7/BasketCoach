@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import case, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -12,6 +12,7 @@ from schemas import (
 )
 from security import get_current_user
 from social import is_unique_conflict, lock_user_pair, ordered_pair, public_user
+from notification_outbox import enqueue_friend_event, dispatch_pending
 
 
 router = APIRouter(prefix="/friends", tags=["Friends"])
@@ -29,6 +30,7 @@ def _request_response(friend_request: FriendRequest) -> FriendRequestResponse:
 @router.post("/requests", response_model=FriendRequestResponse, status_code=status.HTTP_201_CREATED)
 def send_friend_request(
     data: FriendRequestCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -53,7 +55,9 @@ def send_friend_request(
         db.add(friend_request)
         db.flush()
         response = _request_response(friend_request)
+        enqueue_friend_event(db, response, "FRIEND_REQUEST")
         db.commit()
+        background_tasks.add_task(dispatch_pending, db.get_bind())
         return response
     except IntegrityError as exc:
         db.rollback()
@@ -86,7 +90,7 @@ def get_friend_requests(
 
 
 def _respond_to_request(
-    request_id: int, current_user: User, db: Session, *, accept: bool,
+    request_id: int, current_user: User, db: Session, *, accept: bool, background_tasks: BackgroundTasks | None = None,
 ) -> FriendRequestResponse:
     friend_request = db.get(FriendRequest, request_id)
     if friend_request is None:
@@ -110,7 +114,11 @@ def _respond_to_request(
         friend_request.responded_at = datetime.now(timezone.utc)
         db.flush()
         response = _request_response(friend_request)
+        if accept:
+            enqueue_friend_event(db, response, "FRIEND_ACCEPTED")
         db.commit()
+        if accept and background_tasks is not None:
+            background_tasks.add_task(dispatch_pending, db.get_bind())
         return response
     except IntegrityError as exc:
         db.rollback()
@@ -125,10 +133,11 @@ def _respond_to_request(
 @router.post("/requests/{request_id}/accept", response_model=FriendRequestResponse)
 def accept_friend_request(
     request_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return _respond_to_request(request_id, current_user, db, accept=True)
+    return _respond_to_request(request_id, current_user, db, accept=True, background_tasks=background_tasks)
 
 
 @router.post("/requests/{request_id}/reject", response_model=FriendRequestResponse)

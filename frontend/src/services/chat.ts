@@ -1,4 +1,5 @@
 import type { ChatEvent, ChatMessage, Conversation, MediaConfig } from '../types/chat'
+import { notificationEvent } from './notifications'
 
 const objectId = /^[a-f0-9]{24}$/i
 const clientId = /^[A-Za-z0-9_-]{8,64}$/
@@ -22,7 +23,16 @@ export function isChatMessage(value: unknown): value is ChatMessage {
 
 export function parseChatEvent(raw: string): ChatEvent {
   const frame: unknown = JSON.parse(raw)
+  const notification = notificationEvent(frame)
+  if (notification) return notification
   if (record(frame)) {
+    if (frame.event === 'conversation.unread' && typeof frame.conversation_id === 'string' && objectId.test(frame.conversation_id) &&
+      typeof frame.unread_count === 'number' && Number.isSafeInteger(frame.unread_count) && frame.unread_count >= 0) {
+      return { event: 'conversation.unread', conversation_id: frame.conversation_id, unread_count: frame.unread_count }
+    }
+    if (frame.event === 'conversation.viewed' && (frame.conversation_id === null || (typeof frame.conversation_id === 'string' && objectId.test(frame.conversation_id)))) {
+      return { event: 'conversation.viewed', conversation_id: frame.conversation_id }
+    }
     if (frame.event === 'ready' && positiveId(frame.user_id) && date(frame.expires_at)) {
       return { event: 'ready', user_id: frame.user_id, expires_at: frame.expires_at }
     }

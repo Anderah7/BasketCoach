@@ -5,6 +5,9 @@ import { dashboardPath } from '../types/auth'
 import type { UserRole } from '../types/auth'
 import { Brand } from './Brand'
 import { Avatar } from './ProtectedMedia'
+import { RealtimeProvider } from '../contexts/RealtimeContext'
+import { NotificationsProvider } from '../contexts/NotificationsContext'
+import { NotificationsBell } from './NotificationsBell'
 import './dashboard.css'
 
 type IconName = 'grid' | 'team' | 'ball' | 'calendar' | 'spark' | 'profile' | 'logout' | 'friends' | 'chat'
@@ -54,6 +57,12 @@ function NavIcon({ name }: { name: IconName }) {
 }
 
 export function DashboardLayout() {
+  const { user } = useAuth()
+  if (!user) return null
+  return <RealtimeProvider key={user.id}><NotificationsProvider><DashboardContent /></NotificationsProvider></RealtimeProvider>
+}
+
+function DashboardContent() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -114,7 +123,7 @@ export function DashboardLayout() {
         <div className="workbench-panel">
           <header className="workbench-topbar">
             <div><span className="topbar-kicker">BASKETCOACH / {roleLabel[user.role].toUpperCase()}</span><strong>{current}</strong></div>
-            <div className="topbar-right"><span className="topbar-date">{today}</span><div className="topbar-account" ref={accountRef}>
+            <div className="topbar-right"><span className="topbar-date">{today}</span><NotificationsBell /><div className="topbar-account" ref={accountRef}>
               <button type="button" className="topbar-account-trigger" onClick={() => setAccountOpen((open) => !open)} aria-expanded={accountOpen} aria-controls="account-popover" aria-label={`Open account menu for ${user.name}`}>
                 <Avatar id={user.avatar_media_id} name={user.name} className="topbar-user" /><span className="topbar-account-chevron" aria-hidden="true">⌄</span>
               </button>

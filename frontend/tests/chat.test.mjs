@@ -145,3 +145,22 @@ test('attachment previews enforce configured limits and keep captions optional',
   assert.throws(() => attachmentType(new File([], 'empty.png', { type: 'image/png' }), config))
   assert.throws(() => attachmentType(new File(['x'.repeat(101)], 'big.png', { type: 'image/png' }), config))
 })
+
+test('notification events and presence reuse the authenticated socket with validated resource IDs', () => {
+  const notice = { id: 'b'.repeat(24), event_id: 'message:' + message.id, recipient_id: 2, actor_id: 1, actor: null,
+    type: 'NEW_MESSAGE', resource: { conversation_id: message.conversation_id, message_id: message.id, message_type: 'TEXT' },
+    created_at: message.created_at, is_read: false, read_at: null }
+  assert.equal(parseChatEvent(JSON.stringify({ event: 'notification.created', notification: notice, unread_count: 1 })).notification.id, notice.id)
+  assert.equal(parseChatEvent(JSON.stringify({ event: 'notifications.read', all: true, read_at: message.created_at, unread_count: 0 })).unread_count, 0)
+  assert.equal(parseChatEvent(JSON.stringify({ event: 'conversation.viewed', conversation_id: null })).conversation_id, null)
+  assert.throws(() => parseChatEvent(JSON.stringify({ event: 'notification.created', notification: { ...notice, actor_id: -1 }, unread_count: 1 })))
+  assert.throws(() => parseChatEvent(JSON.stringify({ event: 'notifications.read', all: true, read_at: message.created_at, unread_count: -1 })))
+})
+
+test('per-conversation unread events validate exact counts independently of notification read events', () => {
+  assert.deepEqual(parseChatEvent(JSON.stringify({ event: 'conversation.unread', conversation_id: message.conversation_id, unread_count: 123 })), {
+    event: 'conversation.unread', conversation_id: message.conversation_id, unread_count: 123,
+  })
+  assert.throws(() => parseChatEvent(JSON.stringify({ event: 'conversation.unread', conversation_id: message.conversation_id, unread_count: -1 })))
+  assert.throws(() => parseChatEvent(JSON.stringify({ event: 'conversation.unread', conversation_id: 'someone-else', unread_count: 1 })))
+})

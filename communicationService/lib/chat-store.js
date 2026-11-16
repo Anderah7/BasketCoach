@@ -23,6 +23,7 @@ function conversationResponse(conversation, otherParticipant = null) {
     return {
         id: conversation._id.toHexString(), participant_ids: conversation.participantIds,
         created_at: conversation.createdAt.toISOString(), other_participant: otherParticipant,
+        unread_count: conversation.unreadCount ?? 0,
         last_message: conversation.lastMessage ? messageResponse(conversation.lastMessage) : null
     };
 }
@@ -90,7 +91,20 @@ async function initializeChatStore(db) {
             } },
             { $set: { lastMessage: { $arrayElemAt: ['$latest', 0] } } },
             { $set: { activityAt: { $ifNull: ['$lastMessage.createdAt', '$createdAt'] } } },
-            { $sort: { activityAt: -1, _id: -1 } }, { $skip: offset }, { $limit: limit }
+            { $sort: { activityAt: -1, _id: -1 } }, { $skip: offset }, { $limit: limit },
+            { $lookup: {
+                from: 'messages', let: {
+                    conversation: '$_id',
+                    at: { $ifNull: [`$messageReadCursor.${userId}.at`, { $ifNull: [`$notificationSeenAt.${userId}`, new Date(0)] }] },
+                    id: { $ifNull: [`$messageReadCursor.${userId}.id`, new ObjectId('ffffffffffffffffffffffff')] }
+                }, pipeline: [
+                    { $match: { senderId: { $ne: userId }, $expr: { $and: [
+                        { $eq: ['$conversationId', '$$conversation'] },
+                        { $or: [{ $gt: ['$createdAt', '$$at'] }, { $and: [{ $eq: ['$createdAt', '$$at'] }, { $gt: ['$_id', '$$id'] }] }] }
+                    ] } } }, { $count: 'count' }
+                ], as: 'unread'
+            } },
+            { $set: { unreadCount: { $ifNull: [{ $arrayElemAt: ['$unread.count', 0] }, 0] } } }
         ]).toArray();
     }
 
@@ -118,7 +132,7 @@ async function initializeChatStore(db) {
     async function saveText(conversationId, senderId, clientMessageId, text) {
         const message = {
             _id: new ObjectId(), conversationId: objectId(conversationId), senderId, clientMessageId,
-            type: 'TEXT', text, media: null, createdAt: new Date()
+            type: 'TEXT', text, media: null, createdAt: new Date(), notificationPending: true
         };
         try {
             const result = await messages.insertOne(message);
@@ -135,6 +149,7 @@ async function initializeChatStore(db) {
     }
 
     async function saveMedia(message) {
+        message.notificationPending = true;
         try {
             const result = await messages.insertOne(message);
             if (!result.acknowledged) throw new ServiceError(503, 'STORAGE_UNAVAILABLE', 'Message was not acknowledged by storage');

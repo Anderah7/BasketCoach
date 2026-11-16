@@ -4,7 +4,7 @@ Fastify 5 service on port 3001, using `@fastify/mongodb` 10 and the official Mon
 
 ## Configuration and startup
 
-Install dependencies with `npm install`. Copy `.env.example` to `.env` if the local file does not exist, then configure:
+Install dependencies with `npm install`. Keep the service configuration in `communicationService/.env`:
 
 ```dotenv
 PORT=3001

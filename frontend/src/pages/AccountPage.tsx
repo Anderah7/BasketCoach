@@ -1,5 +1,6 @@
 import { PageHeading } from '../components/WorkspaceUI'
 import { AvatarEditor } from '../components/AvatarEditor'
+import { UsernameEditor } from '../components/UsernameEditor'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDate } from '../services/format'
 
@@ -12,6 +13,7 @@ export function AccountPage() {
   return <main className="wb-page">
     <PageHeading kicker="MY ACCOUNT" title="Your details" description="Your account information, verified by BasketCoach." />
     <AvatarEditor />
+    <UsernameEditor />
     <section className="wb-card">
       <div className="wb-card-heading"><h2>{role} profile</h2></div>
       <ul className="wb-list">

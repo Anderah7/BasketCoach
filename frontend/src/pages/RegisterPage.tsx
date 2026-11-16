@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import { AuthPanel } from '../components/AuthPanel'
 import { ApiError } from '../services/api'
 import { authService } from '../services/auth'
+import { isValidUsername, normalizeUsername, usernameHint } from '../services/username'
 import type { UserRole } from '../types/auth'
 
 const roles: { value: UserRole; label: string; description: string }[] = [
@@ -15,6 +16,7 @@ const roles: { value: UserRole; label: string; description: string }[] = [
 export function RegisterPage() {
   const navigate = useNavigate()
   const [name, setName] = useState('')
+  const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('player')
@@ -38,13 +40,17 @@ export function RegisterPage() {
       setError('Your password must contain at least 6 characters.')
       return
     }
+    if (username.trim() && !isValidUsername(username)) {
+      setError(usernameHint)
+      return
+    }
 
     setSubmitting(true)
     try {
-      await authService.register({ name: cleanName, email: cleanEmail, password, role })
+      await authService.register({ name: cleanName, username: normalizeUsername(username) || null, email: cleanEmail, password, role })
       navigate('/login', { replace: true, state: { registered: true, email: cleanEmail } })
     } catch (cause) {
-      if (cause instanceof ApiError && (cause.status === 400 || cause.status === 409)) {
+      if (cause instanceof ApiError && cause.status === 400 && cause.message === 'Email already registered') {
         setError('That email is already registered. Try logging in.')
       } else {
         setError(cause instanceof Error ? cause.message : 'Could not create your account.')
@@ -65,6 +71,10 @@ export function RegisterPage() {
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
         <label htmlFor="register-name">Name</label>
         <input id="register-name" type="text" autoComplete="name" maxLength={100} placeholder="Your name" value={name} onChange={(event) => setName(event.target.value)} required />
+
+        <label htmlFor="register-username">Username (optional)</label>
+        <input id="register-username" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={24} placeholder="e.g. player_23" value={username} onChange={(event) => setUsername(event.target.value)} aria-describedby="register-username-hint" />
+        <small className="field-help" id="register-username-hint">{usernameHint}</small>
 
         <label htmlFor="register-email">Email address</label>
         <input id="register-email" type="email" autoComplete="email" inputMode="email" maxLength={200} placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required />

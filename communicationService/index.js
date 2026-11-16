@@ -21,7 +21,10 @@ async function start() {
         await app.listen({ port: config.port, host: '0.0.0.0' });
     } catch (error) {
         if (app) {
-            app.log.error({ code: error.code, name: error.name }, 'Startup failed. Check MongoDB connectivity, configuration and the HTTP port.');
+            const message = error.code === 13297
+                ? 'Startup failed: MONGODB_DB_NAME must exactly match the capitalization of the existing database name in MongoDB Compass.'
+                : 'Startup failed. Check MongoDB connectivity, configuration and the HTTP port.';
+            app.log.error({ code: error.code, name: error.name }, message);
             await app.close().catch(() => {});
         } else {
             console.error(error.message);

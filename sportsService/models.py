@@ -7,8 +7,8 @@ from enum import Enum as PythonEnum
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey,
-    Integer, Numeric, String, Text,
-    UniqueConstraint, func
+    Index, Integer, Numeric, String, Text,
+    UniqueConstraint, func, text
 )
 
 from sqlalchemy.orm import (
@@ -23,11 +23,30 @@ class UserRole(PythonEnum):
     PLAYER = "player"
     FAN = "fan"
 
+
+class FriendRequestStatus(PythonEnum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+
+
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_users_username"),
+        CheckConstraint(
+            "username IS NULL OR (length(username) BETWEEN 3 AND 24 AND username = lower(username))",
+            name="ck_users_username_normalized",
+        ),
+        CheckConstraint(
+            "username IS NULL OR username ~ '^[a-z0-9_]{3,24}$'",
+            name="ck_users_username_characters",
+        ).ddl_if(dialect="postgresql"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    username: Mapped[str | None] = mapped_column(String(24), nullable=True)
     email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), nullable=False)
@@ -44,10 +63,71 @@ class User(Base):
         back_populates="avatar_user", uselist=False,
         foreign_keys=lambda: [MediaAsset.avatar_user_id],
     )
+    sent_friend_requests: Mapped[list[FriendRequest]] = relationship(
+        back_populates="sender", foreign_keys=lambda: [FriendRequest.sender_id]
+    )
+    received_friend_requests: Mapped[list[FriendRequest]] = relationship(
+        back_populates="recipient", foreign_keys=lambda: [FriendRequest.recipient_id]
+    )
+    friendships_as_low: Mapped[list[Friendship]] = relationship(
+        back_populates="low_user", foreign_keys=lambda: [Friendship.user_low_id]
+    )
+    friendships_as_high: Mapped[list[Friendship]] = relationship(
+        back_populates="high_user", foreign_keys=lambda: [Friendship.user_high_id]
+    )
 
     @property
     def avatar_media_id(self) -> int | None:
         return self.avatar_media.id if self.avatar_media else None
+
+
+class FriendRequest(Base):
+    __tablename__ = "friend_requests"
+    __table_args__ = (
+        CheckConstraint("user_low_id < user_high_id", name="ck_friend_requests_ordered_pair"),
+        CheckConstraint(
+            "(sender_id = user_low_id AND recipient_id = user_high_id) OR "
+            "(sender_id = user_high_id AND recipient_id = user_low_id)",
+            name="ck_friend_requests_participants",
+        ),
+        CheckConstraint(
+            "(status = 'PENDING' AND responded_at IS NULL) OR "
+            "(status IN ('ACCEPTED', 'REJECTED') AND responded_at IS NOT NULL)",
+            name="ck_friend_requests_response_time",
+        ),
+        Index(
+            "uq_friend_requests_pending_pair", "user_low_id", "user_high_id", unique=True,
+            postgresql_where=text("status = 'PENDING'"), sqlite_where=text("status = 'PENDING'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    user_low_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_high_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    status: Mapped[FriendRequestStatus] = mapped_column(
+        Enum(FriendRequestStatus, name="friend_request_status"),
+        default=FriendRequestStatus.PENDING, server_default="PENDING", nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sender: Mapped[User] = relationship(back_populates="sent_friend_requests", foreign_keys=[sender_id])
+    recipient: Mapped[User] = relationship(back_populates="received_friend_requests", foreign_keys=[recipient_id])
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+    __table_args__ = (
+        CheckConstraint("user_low_id < user_high_id", name="ck_friendships_ordered_pair"),
+    )
+
+    user_low_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    user_high_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    low_user: Mapped[User] = relationship(back_populates="friendships_as_low", foreign_keys=[user_low_id])
+    high_user: Mapped[User] = relationship(back_populates="friendships_as_high", foreign_keys=[user_high_id])
+
 
 class Team(Base):
     __tablename__ = "teams"

@@ -1,14 +1,27 @@
 from datetime import datetime, date
 from decimal import Decimal
+from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, EmailStr, Field, ConfigDict, PositiveInt, StrictBool, field_validator
-from models import UserRole, PlayerPosition, ExerciseCategory, TrainingCreationMode, AssignmentStatus
+from pydantic import AwareDatetime, BaseModel, BeforeValidator, EmailStr, Field, ConfigDict, PositiveInt, StrictBool, field_validator
+from models import UserRole, PlayerPosition, ExerciseCategory, TrainingCreationMode, AssignmentStatus, FriendRequestStatus
+
+
+def _normalize_username(value):
+    return value.strip().lower() if isinstance(value, str) else value
+
+
+Username = Annotated[
+    str, BeforeValidator(_normalize_username),
+    Field(min_length=3, max_length=24, pattern=r"^[a-z0-9_]{3,24}$"),
+]
+
 
 class UserCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=6)
     role: UserRole
+    username: Username | None = None
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -23,11 +36,72 @@ class UserResponse(BaseModel):
 
     id: int
     name: str
+    username: str | None = None
     email: EmailStr
     role: UserRole
     is_active: bool
     created_at: datetime
     avatar_media_id: int | None = None
+
+
+class UsernameUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: Username
+
+
+class PublicUserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str | None
+    avatar_media_id: int | None
+    role: UserRole
+
+
+class UserSearchResponse(BaseModel):
+    items: list[PublicUserResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class PublicTeamResponse(BaseModel):
+    id: int
+    name: str
+    category: str | None
+
+
+class PublicProfileResponse(PublicUserResponse):
+    team: PublicTeamResponse | None = None
+    position: PlayerPosition | None = None
+    jersey_number: int | None = None
+    friendship_status: Literal["SELF", "NONE", "PENDING_SENT", "PENDING_RECEIVED", "FRIENDS"]
+    friend_request_id: int | None = None
+
+
+class FriendRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: PositiveInt
+
+
+class FriendRequestResponse(BaseModel):
+    id: int
+    sender: PublicUserResponse
+    recipient: PublicUserResponse
+    status: FriendRequestStatus
+    created_at: datetime
+    responded_at: datetime | None
+
+
+class FriendRequestsResponse(BaseModel):
+    received: list[FriendRequestResponse]
+    sent: list[FriendRequestResponse]
+
+
+class FriendResponse(PublicUserResponse):
+    friends_since: datetime
 
 
 class MediaAssetResponse(BaseModel):

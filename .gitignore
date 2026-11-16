@@ -22,6 +22,7 @@ ENV/
 .ruff_cache/
 .coverage
 htmlcov/
+sportsService/tests/.social-postgres/
 
 # IDE and OS files
 .vscode/

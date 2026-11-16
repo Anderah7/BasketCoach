@@ -12,8 +12,15 @@ async function routes(fastify) {
     });
 
     fastify.register(proxy, {
-        upstream: 'http://127.0.0.1:3001',
-        prefix: '/api/communication'
+        upstream: process.env.COMMUNICATION_SERVICE_URL || 'http://127.0.0.1:3001',
+        prefix: '/api/communication',
+        websocket: true,
+        wsServerOptions: { maxPayload: 16 * 1024, perMessageDeflate: false },
+        wsClientOptions: {
+            maxPayload: 16 * 1024,
+            perMessageDeflate: false,
+            rewriteRequestHeaders: (_headers, request) => request.headers.origin ? { origin: request.headers.origin } : {}
+        }
     });
 }
 

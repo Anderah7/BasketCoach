@@ -3,6 +3,7 @@ export type UserRole = 'coach' | 'player' | 'fan'
 export interface AuthUser {
   id: number
   name: string
+  username: string | null
   email: string
   role: UserRole
   is_active: boolean
@@ -18,6 +19,7 @@ export interface LoginCredentials {
 export interface RegisterData extends LoginCredentials {
   name: string
   role: UserRole
+  username?: string | null
 }
 
 export interface TokenResponse {

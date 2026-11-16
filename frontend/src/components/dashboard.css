@@ -253,3 +253,36 @@
 .wb-profile-grid dd { margin: 0; color: #213a4c; font-size: .83rem; font-weight: 700; overflow-wrap: anywhere; }
 .wb-modal-section h4 { margin: 0 0 8px; color: #4c6577; font-size: .81rem; }
 @media (max-width: 420px) { .wb-profile-grid { grid-template-columns: 1fr; } .wb-team-card, .wb-roster-card { padding: 13px; gap: 10px; } }
+
+.social-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 22px; padding: 6px; border: 1px solid #dfe8ed; border-radius: 13px; background: #eef3f6; }
+.social-navigation a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 16px; border-radius: 9px; color: #607787; font-size: .78rem; font-weight: 750; }
+.social-navigation a:hover { color: #173b56; background: #e2eaef; }
+.social-navigation a.active { color: #fff; background: #173b56; box-shadow: 0 3px 8px #173b561a; }
+.social-navigation a:focus-visible, .social-user-trigger:focus-visible { outline: 3px solid #f1bd98; outline-offset: 3px; }
+.social-navigation a span { padding: 2px 6px; border-radius: 5px; background: #ffffff30; font-size: .65rem; }
+.social-text-link { color: #9e582e; text-decoration: underline; text-underline-offset: 3px; font-weight: 750; }
+.social-user-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 255px), 1fr)); gap: 14px; }
+.social-user-card { display: flex; min-width: 0; flex-direction: column; gap: 14px; padding: 17px; border: 1px solid #e1e8ec; border-radius: 13px; background: #fbfcfd; }
+.social-user-trigger { display: flex; align-items: center; width: 100%; gap: 12px; padding: 3px; border: 0; border-radius: 8px; background: none; color: #233b4d; text-align: left; font: inherit; cursor: pointer; }
+.social-user-trigger:hover strong { color: #b16d40; }
+.social-user-trigger:disabled { opacity: .65; cursor: wait; }
+.social-user-identity { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.social-user-identity strong { font-size: .86rem; }
+.social-user-identity > span { font-size: .73rem; color: #7b8f9b; }
+.social-user-identity small { font-size: .67rem; color: #8999a4; }
+.social-avatar { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 46px; height: 46px; overflow: hidden; border-radius: 50%; background: #f5c09d; color: #60351d; font-size: 1rem; font-weight: 800; }
+.social-user-meta { display: flex; align-items: flex-start; flex-direction: column; gap: 7px; color: #8194a0; font-size: .7rem; line-height: 1.5; }
+.social-user-actions { margin-top: auto; padding-top: 13px; border-top: 1px solid #e7edf0; }
+.social-action-group { display: flex; align-items: flex-start; flex-direction: column; gap: 12px; }
+.social-friend-actions { display: flex; align-items: center; gap: 9px; }
+.social-friend-actions > .wb-button { white-space: nowrap; }
+.social-pending-button:disabled { opacity: 1; border-color: #efdfc4; background: #fff5e6; color: #98642e; }
+.social-remove-confirmation { width: 100%; padding: 12px; border: 1px solid #f0d8d3; border-radius: 9px; background: #fff7f5; }
+.social-remove-confirmation p { margin: 0 0 12px; color: #8b5149; font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
+.social-search-form { display: flex; align-items: flex-end; gap: 12px; }
+.social-search-form .wb-field { flex: 1; }
+.social-search-form + .wb-muted { margin: 10px 0 20px; }
+.social-pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 22px; padding-top: 17px; border-top: 1px solid #e7edf0; }
+.social-history-toggle { margin-bottom: 20px; }
+.social-team-category { display: block; margin-top: 5px; color: #7b8f9b; font-size: .72rem; font-weight: 500; }
+@media (max-width: 620px) { .social-navigation a { flex: 1; padding: 10px 8px; font-size: .72rem; } .social-search-form { align-items: stretch; flex-direction: column; } }

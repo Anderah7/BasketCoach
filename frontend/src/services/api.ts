@@ -11,6 +11,7 @@ export class ApiError extends Error {
 }
 
 export interface ApiRequestOptions {
+  service?: 'sports' | 'communication'
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   token?: string
@@ -55,6 +56,14 @@ function englishDetail(detail: string, status: number): string {
     'Gemini no permite generar con la configuración actual del proyecto. Consulta el diagnóstico en la consola de aiTrainingService.': 'Generation is unavailable with the current AI project configuration. Contact the administrator.',
   }
   if (translations[detail]) return translations[detail]
+  if (detail === 'Username is already taken') return 'That username is already taken. Choose another one.'
+  if ([
+    'You are already friends', 'A friend request is already pending',
+    'This user already sent you a request; accept or reject the received request',
+    'This friend request has already been answered', 'This friendship already exists',
+    'Only the recipient can respond to this request', 'Friend request not found',
+    'Friendship not found', 'User not found', 'Search usernames using letters, numbers and underscores',
+  ].includes(detail)) return detail
   const missingExercise = detail.match(/^Ejercicio (\d+) no encontrado$/)
   if (missingExercise) return `Exercise ${missingExercise[1]} was not found.`
   const forbiddenExercise = detail.match(/^No puedes usar el ejercicio (\d+)$/)
@@ -70,6 +79,10 @@ function errorMessage(data: unknown, status: number): string {
     if (typeof detail === 'string') return englishDetail(detail, status)
     if (Array.isArray(detail) && detail.length > 0) {
       const first = detail[0]
+      if (first && typeof first === 'object' && 'loc' in first && Array.isArray(first.loc) && first.loc.includes('username')) {
+        if (first.loc.includes('query')) return 'Search using 1–24 letters, numbers or underscores.'
+        return 'Use 3–24 letters, numbers or underscores for your username.'
+      }
       if (first && typeof first === 'object' && 'msg' in first && typeof first.msg === 'string') {
         return englishDetail(first.msg, status)
       }
@@ -85,7 +98,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   let response: Response
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    const base = options.service === 'communication' ? '/api/communication' : API_BASE
+    response = await fetch(`${base}${path}`, {
       method: options.method ?? 'GET',
       headers,
       body: options.body === undefined ? undefined : options.body instanceof FormData ? options.body : JSON.stringify(options.body),
@@ -106,7 +120,11 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     }
   }
 
-  if (!response.ok) throw new ApiError(response.status, errorMessage(data, response.status))
+  if (!response.ok) {
+    const detail = options.service === 'communication' && data && typeof data === 'object' && 'detail' in data && typeof data.detail === 'string'
+      ? data.detail : errorMessage(data, response.status)
+    throw new ApiError(response.status, detail)
+  }
   return data as T
 }
 

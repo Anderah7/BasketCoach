@@ -28,6 +28,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
+  const token = session?.token
   const [loading, setLoading] = useState(true)
   const [restoreError, setRestoreError] = useState<string | null>(null)
   const restoreController = useRef<AbortController | null>(null)
@@ -94,26 +95,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     path: string,
     options: Omit<ApiRequestOptions, 'token'> = {},
   ): Promise<T> => {
-    if (!session) throw new ApiError(401, 'Log in to continue.')
+    if (!token) throw new ApiError(401, 'Log in to continue.')
     try {
-      return await apiRequest<T>(path, { ...options, token: session.token })
+      return await apiRequest<T>(path, { ...options, token })
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) logout()
       throw error
     }
-  }, [session, logout])
+  }, [token, logout])
 
   const requestBlob = useCallback(async (path: string, signal?: AbortSignal): Promise<Blob> => {
-    if (!session) throw new ApiError(401, 'Log in to continue.')
-    try { return await apiRequestBlob(path, { token: session.token, signal }) }
+    if (!token) throw new ApiError(401, 'Log in to continue.')
+    try { return await apiRequestBlob(path, { token, signal }) }
     catch (error) { if (error instanceof ApiError && error.status === 401) logout(); throw error }
-  }, [session, logout])
+  }, [token, logout])
 
   const refreshUser = useCallback(async () => {
-    if (!session) throw new ApiError(401, 'Log in to continue.')
-    const user = await authService.me(session.token)
-    setSession((current) => current?.token === session.token ? { ...current, user } : current)
-  }, [session])
+    if (!token) throw new ApiError(401, 'Log in to continue.')
+    const user = await authService.me(token)
+    setSession((current) => current?.token === token ? { ...current, user } : current)
+  }, [token])
 
   return (
     <AuthContext.Provider value={{

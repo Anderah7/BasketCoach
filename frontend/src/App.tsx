@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { DashboardLayout } from './components/DashboardLayout'
+import { FriendsLayout } from './components/FriendsLayout'
 import { PublicLayout } from './components/PublicLayout'
 import { GuestOnly, RequireAuth, RequireRole } from './components/RouteGuards'
 import { AuthProvider } from './contexts/AuthContext'
@@ -17,6 +18,10 @@ import { PlayerProfilePage } from './pages/PlayerProfilePage'
 import { PlayerTeamPage } from './pages/PlayerTeamPage'
 import { PlayerTrainingsPage } from './pages/PlayerTrainingsPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { FriendsPage } from './pages/FriendsPage'
+import { FindUsersPage } from './pages/FindUsersPage'
+import { FriendRequestsPage } from './pages/FriendRequestsPage'
+import { ChatPage } from './pages/ChatPage'
 import './App.css'
 
 function App() {
@@ -31,6 +36,12 @@ function App() {
           </Route>
 
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
+            <Route path="chat/:conversationId?" element={<ChatPage />} />
+            <Route path="friends" element={<FriendsLayout />}>
+              <Route index element={<FriendsPage />} />
+              <Route path="search" element={<FindUsersPage />} />
+              <Route path="requests" element={<FriendRequestsPage />} />
+            </Route>
             <Route path="coach/dashboard" element={<RequireRole role="coach"><CoachDashboard /></RequireRole>} />
             <Route path="coach/teams" element={<RequireRole role="coach"><CoachTeamsPage /></RequireRole>} />
             <Route path="coach/exercises" element={<RequireRole role="coach"><CoachExercisesPage /></RequireRole>} />

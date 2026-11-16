@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { DetailModal } from '../components/DetailModal'
 import { EmptyState, Notice, PageHeading } from '../components/WorkspaceUI'
 import { Avatar } from '../components/ProtectedMedia'
+import { PlayerFriendshipSection } from '../components/PlayerFriendshipSection'
 import { useAuth } from '../contexts/AuthContext'
 import { errorText, formatDate, positionLabel } from '../services/format'
 import type { Team, TeamPlayer, TeamPlayerDetail } from '../types/sports'
@@ -169,6 +170,7 @@ export function CoachTeamsPage() {
         </section>
       </> : playerLoading ? <Notice>Loading player profile...</Notice> : playerDetail && <>
         <div className="wb-player-identity"><Avatar id={playerDetail.avatar_media_id} name={playerDetail.name} className="profile-avatar" /><div><h3>{playerDetail.name}</h3><p>{playerDetail.email}</p><span className="wb-pill">{playerDetail.is_active ? 'Active player' : 'Inactive account'}</span></div></div>
+        {playerDetail.is_active && <PlayerFriendshipSection userId={playerDetail.user_id} />}
         <dl className="wb-profile-grid">
           <div><dt>Team</dt><dd>{selected.name}</dd></div><div><dt>Position</dt><dd>{positionLabel(playerDetail.position)}</dd></div>
           <div><dt>Jersey number</dt><dd>{playerDetail.jersey_number ?? 'Not assigned'}</dd></div><div><dt>Date of birth</dt><dd>{playerDetail.birth_date ? formatDate(playerDetail.birth_date) : 'Not set'}</dd></div>

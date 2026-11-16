@@ -7,7 +7,7 @@ import { Brand } from './Brand'
 import { Avatar } from './ProtectedMedia'
 import './dashboard.css'
 
-type IconName = 'grid' | 'team' | 'ball' | 'calendar' | 'spark' | 'profile' | 'logout'
+type IconName = 'grid' | 'team' | 'ball' | 'calendar' | 'spark' | 'profile' | 'logout' | 'friends' | 'chat'
 
 const navigation: Record<UserRole, { to: string; label: string; icon: IconName }[]> = {
   coach: [
@@ -47,6 +47,8 @@ function NavIcon({ name }: { name: IconName }) {
     spark: <><path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2ZM19 17l.6 1.4L21 19l-1.4.6L19 21l-.6-1.4L17 19l1.4-.6L19 17Z" /></>,
     profile: <><circle cx="12" cy="8" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" /></>,
     logout: <><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M14 16l4-4-4-4M9 12h9" /></>,
+    friends: <><circle cx="8" cy="8" r="3" /><circle cx="17" cy="9" r="2.5" /><path d="M2 21v-2a6 6 0 0 1 12 0v2M15 15a5 5 0 0 1 7 4v2" /></>,
+    chat: <><path d="M21 11a8 8 0 0 1-8 8H8l-5 3V11a9 9 0 1 1 18 0Z" /><path d="M8 10h8M8 14h5" /></>,
   }
   return <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" {...common}>{paths[name]}</svg>
 }
@@ -76,9 +78,9 @@ export function DashboardLayout() {
 
   if (!user) return null
 
-  const links = navigation[user.role]
+  const links = [...navigation[user.role], { to: '/friends', label: 'Friends', icon: 'friends' as const }, { to: '/chat', label: 'Messages', icon: 'chat' as const }]
   const current = links.find((link) => link.to === location.pathname)?.label
-    ?? (location.pathname === accountPath[user.role] ? 'My account' : 'Your space')
+    ?? (location.pathname.startsWith('/chat/') ? 'Messages' : location.pathname.startsWith('/friends/') ? 'Friends' : location.pathname === accountPath[user.role] ? 'My account' : 'Your space')
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
 
   function handleLogout() {
@@ -95,7 +97,7 @@ export function DashboardLayout() {
           <div className="sidebar-caption">YOUR SPACE</div>
           <nav className="sidebar-nav" aria-label="Dashboard navigation">
             {links.map((link) => (
-              <NavLink key={link.to} to={link.to} end className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
+              <NavLink key={link.to} to={link.to} end={link.to !== '/friends' && link.to !== '/chat'} className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
                 <NavIcon name={link.icon} /><span>{link.label}</span>
               </NavLink>
             ))}
@@ -103,7 +105,7 @@ export function DashboardLayout() {
           <div className="sidebar-bottom">
             <div className="sidebar-profile">
               <Avatar id={user.avatar_media_id} name={user.name} className="sidebar-avatar" />
-              <span><strong>{user.name}</strong><small>{roleLabel[user.role]}</small></span>
+              <span><strong>{user.username ? `@${user.username}` : user.name}</strong><small>{roleLabel[user.role]}</small></span>
             </div>
             <button className="sidebar-logout" onClick={handleLogout}><NavIcon name="logout" /> Log out</button>
           </div>
@@ -117,7 +119,7 @@ export function DashboardLayout() {
                 <Avatar id={user.avatar_media_id} name={user.name} className="topbar-user" /><span className="topbar-account-chevron" aria-hidden="true">⌄</span>
               </button>
               {accountOpen && <div className="account-popover" id="account-popover">
-                <div className="account-popover-header"><strong>{user.name}</strong><span>{user.email}</span><small>{roleLabel[user.role]}</small></div>
+                <div className="account-popover-header"><strong>{user.username ? `@${user.username}` : user.name}</strong><span>{user.email}</span><small>{roleLabel[user.role]}</small></div>
                 <Link to={accountPath[user.role]} className="account-popover-item" onClick={() => setAccountOpen(false)}><NavIcon name="profile" />{user.role === 'player' ? 'Player profile' : 'My account'}</Link>
                 <Link to={dashboardPath[user.role]} className="account-popover-item" onClick={() => setAccountOpen(false)}><NavIcon name="grid" />Go to dashboard</Link>
                 <button type="button" className="account-popover-item account-popover-logout" onClick={handleLogout}><NavIcon name="logout" />Log out</button>

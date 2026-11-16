@@ -1,8 +1,10 @@
 async function routes(fastify) {
-    fastify.get('/pruebas', async () => ({
+    const probe = async () => ({
         status: 'ok',
         service: 'communicationService'
-    }));
+    });
+    fastify.get('/prueba', probe);
+    fastify.get('/pruebas', probe);
 }
 
 module.exports = routes;

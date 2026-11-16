@@ -1,23 +1,33 @@
-const Fastify = require('fastify');
-const cors = require('@fastify/cors');
-const routes = require('./routes/pruebas');
+const { buildApp } = require('./app');
+const { loadConfig } = require('./config');
 
-const app = Fastify();
-const PORT = 3001;
-const origins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
-    .split(',')
-    .map(origin => origin.trim())
-    .filter(Boolean);
-
-app.register(cors, {
-    origin: origins,
-    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-});
-app.register(routes);
-
-app.listen({ port: PORT, host: '0.0.0.0' })
-    .then(() => console.log(`Servidor iniciado en http://localhost:${PORT}`))
-    .catch(error => {
-        console.error(error);
+async function start() {
+    let app;
+    try {
+        const config = loadConfig();
+        app = buildApp({ config });
+        let closing = false;
+        const shutdown = async (signal) => {
+            if (closing) return;
+            closing = true;
+            app.log.info({ signal }, 'Stopping communicationService');
+            try { await app.close(); } catch {
+                app.log.error('Could not close communicationService cleanly');
+                process.exitCode = 1;
+            }
+        };
+        process.once('SIGINT', () => { void shutdown('SIGINT'); });
+        process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+        await app.listen({ port: config.port, host: '0.0.0.0' });
+    } catch (error) {
+        if (app) {
+            app.log.error({ code: error.code, name: error.name }, 'Startup failed. Check MongoDB connectivity, configuration and the HTTP port.');
+            await app.close().catch(() => {});
+        } else {
+            console.error(error.message);
+        }
         process.exitCode = 1;
-    });
+    }
+}
+
+void start();

@@ -2,8 +2,8 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, BeforeValidator, EmailStr, Field, ConfigDict, PositiveInt, StrictBool, field_validator
-from models import UserRole, PlayerPosition, ExerciseCategory, TrainingCreationMode, AssignmentStatus, FriendRequestStatus
+from pydantic import AwareDatetime, BaseModel, BeforeValidator, EmailStr, Field, ConfigDict, PositiveInt, StrictBool, field_validator, model_validator
+from models import UserRole, PlayerPosition, ExerciseCategory, TrainingCreationMode, AssignmentStatus, FriendRequestStatus, MatchStatus
 
 
 def _normalize_username(value):
@@ -375,3 +375,86 @@ class TrainingPlayerProgressResponse(BaseModel):
     total_exercises: int
     progress_percent: float
     completed_at: datetime | None
+
+
+class MatchCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    home_team_id: PositiveInt
+    away_team_id: PositiveInt
+    match_date: AwareDatetime
+    location: str | None = Field(default=None, max_length=150)
+    season_id: PositiveInt | None = None
+
+    @model_validator(mode="after")
+    def different_teams(self):
+        if self.home_team_id == self.away_team_id:
+            raise ValueError("A team cannot play against itself")
+        return self
+
+
+class MatchUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    match_date: AwareDatetime | None = None
+    location: str | None = Field(default=None, max_length=150)
+    season_id: PositiveInt | None = None
+
+    @model_validator(mode="after")
+    def valid_patch(self):
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one field to update")
+        if "match_date" in self.model_fields_set and self.match_date is None:
+            raise ValueError("Match date cannot be null")
+        return self
+
+
+class MatchResultUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    home_score: int = Field(strict=True, ge=0, le=2147483647)
+    away_score: int = Field(strict=True, ge=0, le=2147483647)
+
+
+class MatchTeamResponse(PublicTeamResponse):
+    model_config = ConfigDict(from_attributes=True)
+
+    coach_id: int | None
+
+
+class MatchSeasonResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    start_date: date
+    end_date: date
+
+
+class MatchSeasonOption(MatchSeasonResponse):
+    team_ids: list[int]
+
+
+class MatchOptionsResponse(BaseModel):
+    teams: list[MatchTeamResponse]
+    seasons: list[MatchSeasonOption]
+
+
+class MatchResponse(BaseModel):
+    id: int
+    home_team: MatchTeamResponse
+    away_team: MatchTeamResponse
+    match_date: datetime
+    location: str | None
+    season: MatchSeasonResponse | None
+    home_score: int | None
+    away_score: int | None
+    status: MatchStatus
+    can_manage: bool
+
+
+class MatchesResponse(BaseModel):
+    items: list[MatchResponse]
+    total: int
+    limit: int
+    offset: int

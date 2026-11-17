@@ -18,16 +18,19 @@ const navigation: Record<UserRole, { to: string; label: string; icon: IconName }
     { to: '/coach/teams', label: 'My teams', icon: 'team' },
     { to: '/coach/exercises', label: 'Exercises', icon: 'ball' },
     { to: '/coach/trainings', label: 'Training', icon: 'calendar' },
+    { to: '/matches', label: 'Matches & calendar', icon: 'ball' },
     { to: '/coach/ai', label: 'AI assistant', icon: 'spark' },
   ],
   player: [
     { to: '/player/dashboard', label: 'Overview', icon: 'grid' },
     { to: '/player/team', label: 'My team', icon: 'team' },
     { to: '/player/trainings', label: 'Training', icon: 'calendar' },
+    { to: '/matches', label: 'Matches & calendar', icon: 'ball' },
     { to: '/player/profile', label: 'Player profile', icon: 'profile' },
   ],
   fan: [
     { to: '/fan/dashboard', label: 'Overview', icon: 'grid' },
+    { to: '/matches', label: 'Matches & calendar', icon: 'ball' },
     { to: '/fan/account', label: 'My account', icon: 'profile' },
   ],
 }

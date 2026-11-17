@@ -22,6 +22,7 @@ import { FriendsPage } from './pages/FriendsPage'
 import { FindUsersPage } from './pages/FindUsersPage'
 import { FriendRequestsPage } from './pages/FriendRequestsPage'
 import { ChatPage } from './pages/ChatPage'
+import { MatchesPage } from './pages/MatchesPage'
 import './App.css'
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
           </Route>
 
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
+            <Route path="matches" element={<MatchesPage />} />
             <Route path="chat/:conversationId?" element={<ChatPage />} />
             <Route path="friends" element={<FriendsLayout />}>
               <Route index element={<FriendsPage />} />

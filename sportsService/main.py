@@ -8,6 +8,7 @@ from routers.trainings import router as trainings_router
 from routers.ai import router as ai_router
 from routers.media import router as media_router
 from routers.friends import router as friends_router
+from routers.matches import router as matches_router
 from notification_outbox import notification_lifespan
 
 app = FastAPI(
@@ -25,3 +26,4 @@ app.include_router(trainings_router)
 app.include_router(ai_router)
 app.include_router(media_router)
 app.include_router(friends_router)
+app.include_router(matches_router)

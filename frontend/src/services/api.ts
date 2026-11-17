@@ -56,6 +56,15 @@ function englishDetail(detail: string, status: number): string {
     'Gemini no permite generar con la configuración actual del proyecto. Consulta el diagnóstico en la consola de aiTrainingService.': 'Generation is unavailable with the current AI project configuration. Contact the administrator.',
   }
   if (translations[detail]) return translations[detail]
+  if ([
+    'Match not found', 'Season not found', 'Team not found', 'Only coaches can manage matches',
+    'You must coach a participating team to manage this match', 'Only scheduled matches can be changed',
+    'Season dates are invalid', 'Match date must fall within the season (UTC)',
+    'Both teams must participate in the selected season', 'Match data conflicts with existing records',
+    'The match has already been finished or cancelled; refresh the calendar',
+    'One or both teams were not found', 'Calendar boundaries must include a timezone',
+    'date_from must precede date_to',
+  ].includes(detail)) return detail
   if (detail === 'Username is already taken') return 'That username is already taken. Choose another one.'
   if ([
     'You are already friends', 'A friend request is already pending',
